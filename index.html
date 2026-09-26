@@ -1,0 +1,2053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0f766e">
+<title>Money Manager</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Money">
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --accent: #0f766e;
+    --danger: #dc2626;
+    --border: #e5e7eb;
+    --income: #15803d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111827;
+      --card: #1f2937;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --border: #374151;
+      --income: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+  }
+  header {
+    background: var(--accent);
+    color: #fff;
+    padding: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .month-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+  }
+  .month-nav button {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: #fff;
+    font-size: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+  }
+  .month-label { font-size: 16px; font-weight: 500; }
+  .total { font-size: 32px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+  .total.negative { color: #fecaca; }
+  .total-sub { font-size: 12px; opacity: 0.85; text-align: center; margin-top: 8px; }
+  .stats { display: flex; gap: 8px; margin-top: 10px; }
+  .stat {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.12);
+    text-align: center;
+  }
+  .stat-label { display: block; font-size: 11px; opacity: 0.85; }
+  .stat-value { display: block; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  main { padding: 16px; padding-bottom: 96px; max-width: 600px; margin: 0 auto; }
+  .card {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card h2 { margin: 0 0 12px; font-size: 15px; color: var(--muted); font-weight: 600; }
+  .cat-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; }
+  .cat-row .name { width: 110px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cat-row .bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .cat-row .bar div { height: 100%; background: var(--accent); }
+  .cat-row .bar .fill { display: flex; background: none; }
+  .cat-row .amt { width: 80px; text-align: right; flex-shrink: 0; }
+  .cat-group { margin-bottom: 4px; }
+  .cat-group.has-subs > .cat-row { cursor: pointer; }
+  .cat-row .chevron { width: 12px; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .sub-rows { display: none; margin: 2px 0 10px 20px; }
+  .cat-group.open .sub-rows { display: block; }
+  .sub-rows .cat-row { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .sub-rows .cat-row .name { width: 90px; }
+  .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+  .day-group { margin-bottom: 16px; }
+  .day-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 4px 6px;
+  }
+  .items { display: flex; flex-direction: column; gap: 8px; }
+  /* Each row is tinted with its (sub)category colour via CSS variables set inline:
+     --c: full shade, --tint / --tint-soft: gradient wash, --line: border, --icon-bg */
+  .expense {
+    --c: var(--muted);
+    --tint: transparent;
+    --tint-soft: transparent;
+    --line: var(--border);
+    --icon-bg: var(--bg);
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 12px 14px 12px 18px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background:
+      linear-gradient(100deg, var(--tint) 0%, var(--tint-soft) 55%, transparent 100%),
+      var(--card);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px -6px var(--tint);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.12s ease;
+  }
+  .expense:active { transform: scale(0.985); }
+  .expense::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: var(--c);
+  }
+  .expense .icon {
+    width: 38px; height: 38px;
+    border-radius: 12px;
+    background: var(--icon-bg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    margin-right: 12px;
+    flex-shrink: 0;
+  }
+  .expense .info { flex: 1; min-width: 0; }
+  .expense .info .title { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .expense .info .cat { font-size: 12px; color: var(--muted); }
+  .expense .amount { font-weight: 600; margin-left: 8px; font-variant-numeric: tabular-nums; }
+  .expense .amount.income { color: var(--income); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; line-height: 1.6; }
+  .empty .btn { margin-top: 16px; flex: none; padding: 12px 24px; }
+  .fab {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 32px;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
+  .modal-bg {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 20;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--card);
+    width: 100%;
+    max-width: 600px;
+    border-radius: 16px 16px 0 0;
+    padding: 20px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal h3 { margin: 0 0 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input, select {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+  }
+  input.big { font-size: 28px; font-weight: 600; }
+  .btn-row { display: flex; gap: 8px; margin-top: 20px; }
+  .btn {
+    flex: 1;
+    padding: 14px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+  }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.secondary { background: var(--border); color: var(--text); }
+  .btn.danger { background: var(--danger); color: #fff; }
+  .btn.small { flex: none; padding: 10px 16px; }
+  .menu-btn {
+    position: absolute;
+    right: 16px;
+    top: 12px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 22px;
+  }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
+
+  /* Sync */
+  .sync-pill {
+    position: absolute;
+    right: 52px;
+    top: 15px;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    font-size: 12px;
+  }
+  .setup-steps { font-size: 13px; line-height: 1.55; margin: 4px 0 8px; }
+  .setup-steps summary { font-weight: 600; color: var(--accent); cursor: pointer; }
+  .setup-steps ol { padding-left: 20px; margin: 8px 0; }
+  .setup-steps li { margin-bottom: 4px; }
+  .sync-status { font-size: 13px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+  .sync-status.error { color: var(--danger); }
+
+  /* First-run guide: a spotlight "hole" over the current control plus a tip card */
+  .guide { position: fixed; inset: 0; z-index: 30; }
+  .guide.centered { background: rgba(0,0,0,0.6); }
+  .guide-hole {
+    position: fixed;
+    border-radius: 14px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
+    transition: all 0.25s ease;
+    pointer-events: none;
+  }
+  .guide.centered .guide-hole { display: none; }
+  .guide-card {
+    position: fixed;
+    width: min(320px, calc(100vw - 24px));
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    transition: top 0.25s ease, left 0.25s ease;
+  }
+  .guide-step { font-size: 12px; color: var(--muted); }
+  .guide-card h4 { margin: 4px 0 6px; font-size: 16px; }
+  .guide-card p { margin: 0; font-size: 14px; line-height: 1.5; }
+  .guide-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .guide-skip {
+    margin-right: auto;
+    padding: 8px 0;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* Category manager */
+  .add-row { display: flex; gap: 8px; align-items: center; }
+  .add-row input { padding: 10px; }
+  .emoji-input { width: 56px !important; flex-shrink: 0; text-align: center; }
+  .mgr-cat { border-bottom: 1px solid var(--border); padding: 14px 0; }
+  .mgr-cat:last-child { border-bottom: none; }
+  .mgr-head { display: flex; align-items: center; justify-content: space-between; }
+  .mgr-name { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+  .color-dot {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 3px solid var(--card);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1.5px var(--border);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .color-dot[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--text); }
+  .swatches {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+  }
+  .swatch-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
+  .swatch {
+    aspect-ratio: 1;
+    width: 100%;
+    padding: 0;
+    border: 2px solid var(--card);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .swatch.selected { box-shadow: 0 0 0 2px var(--text); }
+  /* Taken by another category: shown as a hollow ring so it can't be mistaken for a pale colour */
+  .swatch:disabled {
+    background: transparent !important;
+    border: 3px solid var(--sw);
+    opacity: 0.55;
+    cursor: default;
+  }
+  .swatch-name { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .icon-btn {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 14px;
+    padding: 6px 8px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 4px 4px 4px 12px;
+    font-size: 13px;
+  }
+  .chip button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 2px 8px;
+  }
+  .no-subs { font-size: 12px; color: var(--muted); margin: 8px 0; }
+  .mgr-section {
+    margin: 20px 0 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .mgr-section .empty { padding: 12px 0; text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-top: 14px;
+    padding: 4px;
+    background: rgba(0,0,0,0.18);
+    border-radius: 12px;
+  }
+  .tab {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 9px;
+    background: none;
+    color: rgba(255,255,255,0.8);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .tab.active { background: rgba(255,255,255,0.95); color: var(--accent); }
+
+  /* Charts */
+  .segmented {
+    display: flex;
+    padding: 4px;
+    margin-bottom: 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .segmented button {
+    flex: 1;
+    padding: 9px 6px;
+    border: none;
+    border-radius: 9px;
+    background: none;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .segmented button.active { background: var(--accent); color: #fff; }
+  .chart-wrap { position: relative; width: 100%; max-width: 300px; margin: 0 auto; aspect-ratio: 1; }
+  .chart-wrap svg { display: block; width: 100%; height: 100%; }
+  .seg { stroke: var(--card); stroke-width: 2; cursor: pointer; transition: opacity 0.15s; outline: none; }
+  .has-sel .seg:not(.sel) { opacity: 0.25; }
+  .seg:focus-visible { stroke: var(--text); }
+  .chart-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 30%;
+    text-align: center;
+    pointer-events: none;
+  }
+  .chart-center .value { font-size: 22px; font-weight: 700; }
+  .chart-center .label {
+    max-width: 100%;
+    margin-top: 2px;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chart-center .pct { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .lg-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 8px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .lg-row.sel { background: var(--bg); }
+  .lg-row .key { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .lg-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lg-row .pc { width: 44px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .lg-row .am { width: 84px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .lg-row.sub { padding-left: 30px; font-size: 13px; color: var(--muted); }
+  .lg-row.sub .am { font-weight: 500; color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💰 Money Manager</h1>
+  <button class="sync-pill" id="syncPill" hidden onclick="openSyncSetup()"></button>
+  <button class="menu-btn" onclick="openModal('settingsModal')">⋮</button>
+  <div class="month-nav">
+    <button onclick="changeMonth(-1)">‹</button>
+    <span class="month-label" id="monthLabel"></span>
+    <button onclick="changeMonth(1)">›</button>
+  </div>
+  <div class="total-sub">Balance</div>
+  <div class="total" id="monthBalance"></div>
+  <div class="stats">
+    <div class="stat"><span class="stat-label">Income</span><span class="stat-value" id="monthIncome"></span></div>
+    <div class="stat"><span class="stat-label">Expenses</span><span class="stat-value" id="monthExpense"></span></div>
+  </div>
+  <nav class="tabs">
+    <button class="tab" data-tab="expenses">Transactions</button>
+    <button class="tab" data-tab="charts">Charts</button>
+  </nav>
+</header>
+
+<main>
+  <section id="expensesView">
+    <div class="card" id="incomeCard">
+      <h2>Income by category</h2>
+      <div id="incomeBreakdown"></div>
+    </div>
+    <div class="card" id="expenseCard">
+      <h2>Spending by category</h2>
+      <div id="expenseBreakdown"></div>
+    </div>
+    <div id="expenseList"></div>
+  </section>
+
+  <section id="chartsView" hidden>
+    <div class="segmented" id="chartTypeToggle">
+      <button data-type="expense">Spending</button>
+      <button data-type="income">Income</button>
+    </div>
+    <div class="segmented" id="chartModeToggle">
+      <button data-mode="cat">Categories</button>
+      <button data-mode="sub">With subcategories</button>
+    </div>
+    <div id="chartContent"></div>
+  </section>
+</main>
+
+<button class="fab" onclick="openAdd()">+</button>
+
+<!-- Add / edit expense -->
+<div class="modal-bg" id="expenseModal" onclick="if (event.target === this) closeModal('expenseModal')">
+  <div class="modal">
+    <h3 id="expenseModalTitle">Add expense</h3>
+    <form id="expenseForm">
+      <div class="segmented" id="entryTypeToggle">
+        <button type="button" data-type="expense">Expense</button>
+        <button type="button" data-type="income">Income</button>
+      </div>
+      <label for="amount">Amount</label>
+      <input class="big" type="number" id="amount" inputmode="decimal" step="0.01" min="0.01" required>
+      <label for="category">Category</label>
+      <select id="category" required></select>
+      <label for="subcategory">Subcategory (optional)</label>
+      <select id="subcategory"></select>
+      <label for="note">Note (optional)</label>
+      <input type="text" id="note" placeholder="e.g. Lunch with friends">
+      <label for="date">Date</label>
+      <input type="date" id="date" required>
+      <div class="btn-row">
+        <button type="button" class="btn danger" id="deleteBtn" style="display:none">Delete</button>
+        <button type="button" class="btn secondary" onclick="closeModal('expenseModal')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Manage categories -->
+<div class="modal-bg" id="categoriesModal" onclick="if (event.target === this) closeModal('categoriesModal')">
+  <div class="modal">
+    <h3>Categories</h3>
+    <div class="segmented" id="newCatTypeToggle">
+      <button type="button" data-type="expense">Expense category</button>
+      <button type="button" data-type="income">Income category</button>
+    </div>
+    <form id="addCategoryForm" class="add-row">
+      <button type="button" id="newCatColor" class="color-dot" data-action="toggle-picker" data-i="new"></button>
+      <input type="text" id="newCatIcon" class="emoji-input" placeholder="📁" maxlength="8" aria-label="Emoji (optional)">
+      <input type="text" id="newCatName" placeholder="New category name" required>
+      <button type="submit" class="btn primary small">Add</button>
+    </form>
+    <div id="newCatSwatches"></div>
+    <p class="hint">
+      Tap the circle to pick one of 20 colours. Subcategories automatically get lighter shades of it.
+      Hollow rings are colours already used by another category.
+      The emoji is optional; tap its box and use your keyboard's emoji picker.
+    </p>
+    <div id="categoryManager"></div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closeModal('categoriesModal')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- First-run guide -->
+<div class="guide" id="guide" hidden role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+  <div class="guide-hole" id="guideHole"></div>
+  <div class="guide-card" id="guideCard">
+    <div class="guide-step" id="guideStep"></div>
+    <h4 id="guideTitle"></h4>
+    <p id="guideText"></p>
+    <div class="guide-actions">
+      <button type="button" class="guide-skip" id="guideSkip">Skip</button>
+      <button type="button" class="btn secondary small" id="guideBack">Back</button>
+      <button type="button" class="btn primary small" id="guideNext">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- GitHub sync -->
+<div class="modal-bg" id="syncModal" onclick="if (event.target === this) closeModal('syncModal')">
+  <div class="modal">
+    <h3>Sync with GitHub</h3>
+    <p class="hint" style="margin-top:0">
+      Keeps your phone, laptop and other devices in step using one file in your own private GitHub
+      repository. Without it, everything stays in this browser only.
+    </p>
+    <details class="setup-steps">
+      <summary>How to set it up (one time, about 5 minutes)</summary>
+      <ol>
+        <li>On github.com, create a new repository (e.g. <b>money-data</b>) and choose <b>Private</b>.</li>
+        <li>Open <b>Settings → Developer settings → Personal access tokens → Fine-grained tokens</b>
+          and tap <b>Generate new token</b>.</li>
+        <li>Under <b>Repository access</b> choose <b>Only select repositories</b> and pick your new repository.</li>
+        <li>Under <b>Permissions → Repository permissions</b> set <b>Contents</b> to <b>Read and write</b>.
+          Pick an expiry date and generate the token.</li>
+        <li>Copy the token (it starts with <code>github_pat_</code>) and paste it below. On your other
+          devices, open this app and enter the same details.</li>
+      </ol>
+      The token is saved only in this browser and can only reach that one repository.
+    </details>
+    <form id="syncForm">
+      <label for="syncOwner">GitHub username</label>
+      <input type="text" id="syncOwner" required autocapitalize="off" autocorrect="off" spellcheck="false">
+      <label for="syncRepo">Repository name</label>
+      <input type="text" id="syncRepo" required placeholder="money-data" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <label for="syncToken">Access token</label>
+      <input type="password" id="syncToken" autocomplete="off" spellcheck="false">
+      <label for="syncPath">File name in the repository</label>
+      <input type="text" id="syncPath" required autocapitalize="off" autocorrect="off" spellcheck="false">
+      <div class="sync-status" id="syncStatusText"></div>
+      <div class="btn-row">
+        <button type="button" class="btn danger" id="syncDisconnect">Turn off</button>
+        <button type="button" class="btn secondary" onclick="closeModal('syncModal')">Close</button>
+        <button type="submit" class="btn primary">Save &amp; sync</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Settings / backup -->
+<div class="modal-bg" id="settingsModal" onclick="if (event.target === this) closeModal('settingsModal')">
+  <div class="modal">
+    <h3>Settings</h3>
+    <div class="btn-row">
+      <button class="btn primary" onclick="closeModal('settingsModal'); openCategoryManager()">Manage categories</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closeModal('settingsModal'); openSyncSetup()">☁️ Sync with GitHub</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closeModal('settingsModal'); startGuide()">❓ Show guide</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="exportData()">Export backup</button>
+      <button class="btn secondary" onclick="document.getElementById('importFile').click()">Import backup</button>
+    </div>
+    <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importData(event)">
+    <p class="hint">
+      Your data lives in this browser on this device. If you clear the browser's data without
+      GitHub sync turned on, your income and expenses are deleted too, so export a backup now and then.
+    </p>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closeModal('settingsModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const CURRENCY = '₹';
+  const STORAGE_KEY = 'moneyManager.expenses.v1';
+  const CAT_STORAGE_KEY = 'moneyManager.categories.v2';
+  const DEFAULT_ICON = '📁';
+  const ADD_NEW = '__add_new__';
+  const FALLBACK_COLOR = '#9ca3af';
+  // The 20 category colours, in colour-wheel order. They were chosen numerically so that each
+  // colour's whole family (base + subcategory shades from subLch) stays distinct from every
+  // other family, and they keep clear of the app's teal accent and the grey used for "Other".
+  // Changing them or the shade constants below means re-checking that separation.
+  const PALETTE = [
+    { name: 'Raspberry', hex: '#a92e52' }, { name: 'Coral',    hex: '#e26847' },
+    { name: 'Rust',      hex: '#a34003' }, { name: 'Tangerine', hex: '#ef911d' },
+    { name: 'Bronze',    hex: '#815b04' }, { name: 'Mustard',  hex: '#c8a901' },
+    { name: 'Olive',     hex: '#6a6705' }, { name: 'Lime',     hex: '#84bf4b' },
+    { name: 'Forest',    hex: '#057918' }, { name: 'Mint',     hex: '#23c987' },
+    { name: 'Lagoon',    hex: '#07a99a' }, { name: 'Aqua',     hex: '#08a4bb' },
+    { name: 'Ocean',     hex: '#0468a3' }, { name: 'Sky',      hex: '#4db3fe' },
+    { name: 'Indigo',    hex: '#4657bd' }, { name: 'Lavender', hex: '#9c7ae8' },
+    { name: 'Grape',     hex: '#7845ac' }, { name: 'Orchid',   hex: '#d787e9' },
+    { name: 'Plum',      hex: '#95388b' }, { name: 'Blush',    hex: '#f57cb5' },
+  ];
+  // Order used to auto-pick colours for new categories: each next pick is the colour farthest
+  // from those before it, so the first several are very different (first 6 are colour-blind safe).
+  const AUTO_ORDER = [12, 3, 17, 0, 9, 8, 13, 4, 16, 1, 11, 15, 19, 5, 2, 18, 7, 14, 10, 6];
+  // Subcategory shades: up to SHADE_LIGHTEN brighter (OKLCH lightness), chroma down to
+  // SHADE_CHROMA of the base at the lightest, hue nudged alternately by SHADE_HUE degrees.
+  const SHADE_LIGHTEN = 0.15;
+  const SHADE_CHROMA = 0.85;
+  const SHADE_HUE = 7;
+
+  // Icons from the old built-in categories, only used when upgrading existing data
+  const LEGACY_ICONS = {
+    Food: '🍔', Groceries: '🛒', Transport: '🚗', Shopping: '🛍️', Bills: '🧾',
+    Rent: '🏠', Health: '💊', Entertainment: '🎬', Travel: '✈️', Other: '📦',
+  };
+
+  // Change tracking, so two devices can merge their data (see Sync): every entry/category gets
+  // updatedAt when it changes, and deletions are remembered so deleted items don't come back.
+  const DELETED_KEY = 'moneyManager.deleted.v1';
+  let deleted = { entries: {}, categories: {} }; // entry id / lowercase category name -> deletedAt (ms)
+  try { Object.assign(deleted, JSON.parse(localStorage.getItem(DELETED_KEY))); } catch {}
+  let savedEntries = new Map();    // id -> entry as last saved, to spot what changed
+  let savedCategories = new Map(); // lowercase name -> category as last saved
+
+  const SYNC_KEY = 'moneyManager.sync.v1';
+  let syncConfig = null; // { owner, repo, token, path, lastSync } when GitHub sync is on
+  try { syncConfig = JSON.parse(localStorage.getItem(SYNC_KEY)); } catch {}
+  let syncTimer = null;
+  let syncing = false;
+  let syncAgain = false;
+
+  let expenses = loadExpenses();
+  savedEntries = snapshotMap(expenses, entryKey);
+  let categories = []; // [{ name, type: 'expense'|'income', icon, color, subs: [string], updatedAt }]
+  categories = loadCategories();
+  savedCategories = snapshotMap(categories, categoryKey);
+  if (normalizeCategoryColors()) saveCategories();
+  let viewDate = new Date();
+  let editingId = null;
+  const openCategories = new Set();
+
+  const UI_KEY = 'moneyManager.ui.v1';
+  let ui = { tab: 'expenses', chartMode: 'cat', chartType: 'expense' };
+  try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY))); } catch {}
+
+  function loadExpenses() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    } catch {
+      return [];
+    }
+  }
+
+  function entryKey(e) { return e.id; }
+  function categoryKey(c) { return c.name.toLowerCase(); }
+
+  // Item as JSON without its timestamp, for comparing content
+  function snapshot(item) {
+    const { updatedAt, ...rest } = item;
+    return JSON.stringify(rest);
+  }
+
+  function snapshotMap(list, keyOf) {
+    return new Map(list.map(item => [keyOf(item), snapshot(item)]));
+  }
+
+  // Stamps items that changed since the last save and records removed ones; returns the new baseline
+  function trackChanges(list, saved, keyOf, deletedMap) {
+    const now = Date.now();
+    const next = new Map();
+    list.forEach(item => {
+      const key = keyOf(item), snap = snapshot(item);
+      if (saved.get(key) !== snap) item.updatedAt = now;
+      next.set(key, snap);
+    });
+    saved.forEach((_, key) => { if (!next.has(key)) deletedMap[key] = now; });
+    return next;
+  }
+
+  function persistData() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+    localStorage.setItem(CAT_STORAGE_KEY, JSON.stringify(categories));
+    localStorage.setItem(DELETED_KEY, JSON.stringify(deleted));
+  }
+
+  function saveExpenses() {
+    savedEntries = trackChanges(expenses, savedEntries, entryKey, deleted.entries);
+    persistData();
+    scheduleSync();
+  }
+
+  function loadCategories() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(CAT_STORAGE_KEY));
+      if (Array.isArray(stored)) return stored;
+    } catch {}
+    // First run of this version: start empty, but keep categories that existing expenses already use
+    categories = [];
+    ensureCategoriesFor(expenses);
+    saveCategories();
+    return categories;
+  }
+
+  function saveCategories() {
+    savedCategories = trackChanges(categories, savedCategories, categoryKey, deleted.categories);
+    persistData();
+    scheduleSync();
+  }
+
+  function findCategory(name) {
+    return categories.find(c => c.name.toLowerCase() === String(name).toLowerCase());
+  }
+
+  // Entries and categories saved before income existed have no type: they are expenses.
+  // Each entry keeps its own type so it still counts correctly if its category is deleted.
+  function typeOf(item) {
+    return item && item.type === 'income' ? 'income' : 'expense';
+  }
+
+  // Make sure every category/subcategory used by these expenses exists in the list
+  function ensureCategoriesFor(list) {
+    list.forEach(e => {
+      if (!e.category) return;
+      let cat = findCategory(e.category);
+      if (!cat) {
+        cat = { name: e.category, type: typeOf(e), icon: LEGACY_ICONS[e.category] || DEFAULT_ICON, color: nextColor(), subs: [] };
+        categories.push(cat);
+      }
+      if (e.subcategory && !cat.subs.some(s => s.toLowerCase() === e.subcategory.toLowerCase())) {
+        cat.subs.push(e.subcategory);
+      }
+    });
+  }
+
+  function formatMoney(n) {
+    return CURRENCY + n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  }
+
+  function formatSigned(n) {
+    return (n < 0 ? '−' : '') + formatMoney(Math.abs(n));
+  }
+
+  function sumAmounts(list) {
+    return list.reduce((s, e) => s + e.amount, 0);
+  }
+
+  function todayISO() {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+
+  function monthKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function iconFor(category) {
+    const cat = findCategory(category);
+    return (cat && cat.icon) || DEFAULT_ICON;
+  }
+
+  function isHexColor(s) {
+    return typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s);
+  }
+
+  function isPaletteColor(hex) {
+    return PALETTE.some(p => p.hex === String(hex).toLowerCase());
+  }
+
+  function colorName(hex) {
+    const p = PALETTE.find(p => p.hex === String(hex).toLowerCase());
+    return p ? p.name : '';
+  }
+
+  // First unused colour in AUTO_ORDER (colours repeat only once all 20 are taken)
+  function nextColor() {
+    const used = new Set(categories.map(c => String(c.color).toLowerCase()));
+    const free = AUTO_ORDER.find(i => !used.has(PALETTE[i].hex));
+    return PALETTE[free !== undefined ? free : AUTO_ORDER[categories.length % PALETTE.length]].hex;
+  }
+
+  // Every category gets a palette colour, and no two share one while free colours remain.
+  // Old/custom colours snap to the closest free palette colour. Returns true if anything changed.
+  function normalizeCategoryColors() {
+    let changed = false;
+    const taken = new Set();
+    categories.forEach(c => {
+      const hex = String(c.color || '').toLowerCase();
+      if (isPaletteColor(hex) && !taken.has(hex)) {
+        taken.add(hex);
+        if (c.color !== hex) { c.color = hex; changed = true; }
+        return;
+      }
+      const free = PALETTE.filter(p => !taken.has(p.hex));
+      const pool = free.length ? free : PALETTE;
+      let pick = pool[0];
+      if (isHexColor(hex)) {
+        const lab = hexToOklab(hex);
+        const dist = p => { const q = hexToOklab(p.hex); return Math.hypot(lab[0] - q[0], lab[1] - q[1], lab[2] - q[2]); };
+        pick = pool.reduce((best, p) => dist(p) < dist(best) ? p : best);
+      } else {
+        const auto = AUTO_ORDER.map(i => PALETTE[i]).find(p => !taken.has(p.hex));
+        if (auto) pick = auto;
+      }
+      c.color = pick.hex;
+      taken.add(pick.hex);
+      changed = true;
+    });
+    return changed;
+  }
+
+  // ----- OKLab / OKLCH colour maths (perceptual, so shade steps look even across all hues) -----
+
+  function hexToOklab(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const r = lin((n >> 16) & 255), g = lin((n >> 8) & 255), b = lin(n & 255);
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [
+      0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+      1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+      0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+    ];
+  }
+
+  function hexToLch(hex) {
+    const [L, a, b] = hexToOklab(hex);
+    return { L, C: Math.hypot(a, b), H: (Math.atan2(b, a) * 180 / Math.PI + 360) % 360 };
+  }
+
+  // OKLCH -> sRGB [0-255], lowering chroma until the colour fits on screen
+  function lchToRgb({ L, C, H }) {
+    const gam = v => v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055;
+    const h = H * Math.PI / 180;
+    for (let c = C; ; c = Math.max(0, c - 0.004)) {
+      const a = c * Math.cos(h), b = c * Math.sin(h);
+      const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+      const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+      const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+      const rgb = [
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+      ];
+      if (c === 0 || rgb.every(v => v >= -0.0005 && v <= 1.0005)) {
+        return rgb.map(v => Math.round(Math.min(1, Math.max(0, gam(Math.min(1, Math.max(0, v))))) * 255));
+      }
+    }
+  }
+
+  function lchCss(lch, a = 1) {
+    const [r, g, b] = lchToRgb(lch);
+    return a === 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+
+  function colorFor(category) {
+    const cat = findCategory(category);
+    return cat && isHexColor(cat.color) ? cat.color : FALLBACK_COLOR;
+  }
+
+  // Each subcategory gets its own lighter shade of the category colour, spread evenly by its
+  // position in the list; no subcategory = the category colour itself. A small alternating hue
+  // nudge makes sibling shades easier to tell apart. Returns { L, C, H } (OKLCH).
+  function subLch(category, sub) {
+    const base = hexToLch(colorFor(category));
+    if (!sub) return base;
+    const cat = findCategory(category);
+    const subs = cat ? cat.subs : [];
+    let i = subs.indexOf(sub);
+    if (i === -1) i = subs.length; // deleted subcategory: lightest shade
+    const f = Math.min((i + 1) / Math.max(subs.length, 1), 1);
+    return {
+      L: Math.min(base.L + SHADE_LIGHTEN * f, 0.95),
+      C: base.C * (1 - (1 - SHADE_CHROMA) * f),
+      H: (base.H + (i % 2 ? SHADE_HUE : -SHADE_HUE) + 360) % 360,
+    };
+  }
+
+  function subColorFor(category, sub) {
+    return lchCss(subLch(category, sub));
+  }
+
+  // CSS variables for a tinted expense row. The wash uses the shade's hue at a capped
+  // lightness so pale subcategory shades still get a visible, consistent tint.
+  function rowStyle(category, sub) {
+    const lch = subLch(category, sub);
+    const mid = { ...lch, L: Math.min(lch.L, 0.62) };
+    return `--c:${lchCss(lch)};--tint:${lchCss(mid, 0.16)};--tint-soft:${lchCss(mid, 0.05)};` +
+      `--line:${lchCss(mid, 0.22)};--icon-bg:${lchCss(mid, 0.2)}`;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function changeMonth(delta) {
+    viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + delta, 1);
+    render();
+  }
+
+  function toggleCategory(name) {
+    openCategories.has(name) ? openCategories.delete(name) : openCategories.add(name);
+    render();
+  }
+
+  function render() {
+    const key = monthKey(viewDate);
+    const monthExpenses = expenses
+      .filter(e => e.date.startsWith(key))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+
+    document.getElementById('monthLabel').textContent =
+      viewDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+    const monthIncome = monthExpenses.filter(e => typeOf(e) === 'income');
+    const monthSpend = monthExpenses.filter(e => typeOf(e) === 'expense');
+    const incomeTotal = sumAmounts(monthIncome);
+    const spendTotal = sumAmounts(monthSpend);
+    const balanceEl = document.getElementById('monthBalance');
+    balanceEl.textContent = formatSigned(incomeTotal - spendTotal);
+    balanceEl.classList.toggle('negative', incomeTotal - spendTotal < 0);
+    document.getElementById('monthIncome').textContent = formatMoney(incomeTotal);
+    document.getElementById('monthExpense').textContent = formatMoney(spendTotal);
+
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === ui.tab));
+    document.getElementById('expensesView').hidden = ui.tab !== 'expenses';
+    document.getElementById('chartsView').hidden = ui.tab !== 'charts';
+    if (ui.tab === 'charts') {
+      renderCharts(ui.chartType === 'income' ? monthIncome : monthSpend);
+      return;
+    }
+
+    renderBreakdown('incomeCard', 'incomeBreakdown', monthIncome);
+    renderBreakdown('expenseCard', 'expenseBreakdown', monthSpend);
+
+    // Transaction list, grouped by day
+    const list = document.getElementById('expenseList');
+    if (!categories.length && !expenses.length) {
+      list.innerHTML = `
+        <div class="empty">
+          Welcome! Start by creating your categories<br>(e.g. Salary for income; Food, Rent for expenses).
+          <br><button class="btn primary" onclick="openCategoryManager()">Add categories</button>
+        </div>`;
+      return;
+    }
+    if (!monthExpenses.length) {
+      list.innerHTML = '<div class="empty">Nothing added this month.<br>Tap + to add income or an expense.</div>';
+      return;
+    }
+    const byDay = {};
+    monthExpenses.forEach(e => { (byDay[e.date] = byDay[e.date] || []).push(e); });
+    list.innerHTML = Object.entries(byDay).map(([date, items]) => {
+      const dayIn = sumAmounts(items.filter(e => typeOf(e) === 'income'));
+      const dayOut = sumAmounts(items.filter(e => typeOf(e) === 'expense'));
+      const dayTotals = [dayIn ? '+' + formatMoney(dayIn) : '', dayOut ? '−' + formatMoney(dayOut) : ''].filter(Boolean).join(' · ');
+      const label = new Date(date + 'T00:00:00')
+        .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+      return `
+        <div class="day-group">
+          <div class="day-head"><span>${label}</span><span>${dayTotals}</span></div>
+          <div class="items">${items.map(e => `
+            <div class="expense" style="${rowStyle(e.category, e.subcategory)}" onclick="openEdit('${e.id}')">
+              <div class="icon">${escapeHtml(iconFor(e.category))}</div>
+              <div class="info">
+                <div class="title">${escapeHtml(e.note || e.subcategory || e.category)}</div>
+                <div class="cat">${escapeHtml(e.category)}${e.subcategory ? ' › ' + escapeHtml(e.subcategory) : ''}</div>
+              </div>
+              ${typeOf(e) === 'income'
+                ? `<div class="amount income">+${formatMoney(e.amount)}</div>`
+                : `<div class="amount">${formatMoney(e.amount)}</div>`}
+            </div>`).join('')}</div>
+        </div>`;
+    }).join('');
+  }
+
+  // Per-category totals with expandable subcategory rows, for one type of entry
+  function renderBreakdown(cardId, listId, entries) {
+    const total = sumAmounts(entries);
+    const byCat = {};
+    entries.forEach(e => {
+      const c = byCat[e.category] = byCat[e.category] || { total: 0, subs: {} };
+      c.total += e.amount;
+      const sub = e.subcategory || '';
+      c.subs[sub] = (c.subs[sub] || 0) + e.amount;
+    });
+    const cats = Object.entries(byCat).sort((a, b) => b[1].total - a[1].total);
+    document.getElementById(cardId).style.display = cats.length ? '' : 'none';
+    document.getElementById(listId).innerHTML = cats.map(([name, c]) => {
+      const subs = Object.entries(c.subs).sort((a, b) => b[1] - a[1]);
+      const hasSubs = subs.some(([s]) => s !== '');
+      const isOpen = hasSubs && openCategories.has(name);
+      return `
+        <div class="cat-group ${hasSubs ? 'has-subs' : ''} ${isOpen ? 'open' : ''}">
+          <div class="cat-row" ${hasSubs ? `data-cat="${escapeHtml(name)}"` : ''}>
+            <span class="chevron">${hasSubs ? (isOpen ? '▼' : '▶') : ''}</span>
+            <span class="name">${escapeHtml(iconFor(name))} ${escapeHtml(name)}</span>
+            <span class="bar"><div class="fill" style="width:${(c.total / total * 100).toFixed(1)}%">${subs.map(([sub, amt]) =>
+              `<div style="width:${(amt / c.total * 100).toFixed(2)}%;background:${subColorFor(name, sub)}"></div>`).join('')}</div></span>
+            <span class="amt">${formatMoney(c.total)}</span>
+          </div>
+          ${hasSubs ? `<div class="sub-rows">${subs.map(([sub, amt]) => `
+            <div class="cat-row">
+              <span class="name"><span class="dot" style="background:${subColorFor(name, sub)}"></span>${sub ? escapeHtml(sub) : '<i>Unspecified</i>'}</span>
+              <span class="bar"><div style="width:${(amt / c.total * 100).toFixed(1)}%;background:${subColorFor(name, sub)}"></div></span>
+              <span class="amt">${formatMoney(amt)}</span>
+            </div>`).join('')}</div>` : ''}
+        </div>`;
+    }).join('');
+  }
+
+  document.getElementById('expensesView').addEventListener('click', ev => {
+    const row = ev.target.closest('[data-cat]');
+    if (row) toggleCategory(row.dataset.cat);
+  });
+
+  // ---------- Charts ----------
+
+  const MAX_DONUT_SLICES = 6; // beyond this, smaller categories fold into "Other"
+  const CHART_SIZE = 260;
+  let chartSel = null;   // { cat, sub } | { other: true } | null; sub undefined = whole category
+  let chartSegs = [];    // painted segments, indexed by data-i
+  let chartRows = [];    // legend rows, indexed by data-i
+  let chartData = null;  // { cats, total, folded }
+
+  function saveUi() {
+    localStorage.setItem(UI_KEY, JSON.stringify(ui));
+  }
+
+  function setTab(tab) {
+    ui.tab = tab;
+    chartSel = null;
+    saveUi();
+    render();
+  }
+
+  function setChartMode(mode) {
+    ui.chartMode = mode;
+    chartSel = null;
+    saveUi();
+    render();
+  }
+
+  function setChartType(type) {
+    ui.chartType = type;
+    chartSel = null;
+    saveUi();
+    render();
+  }
+
+  // Month's expenses grouped as [{ name, total, color, subs: [{ sub, name, total, color }] }], biggest first
+  function buildChartData(monthExpenses) {
+    const byCat = new Map();
+    monthExpenses.forEach(e => {
+      let c = byCat.get(e.category);
+      if (!c) byCat.set(e.category, c = { name: e.category, total: 0, subTotals: new Map() });
+      c.total += e.amount;
+      const sub = e.subcategory || '';
+      c.subTotals.set(sub, (c.subTotals.get(sub) || 0) + e.amount);
+    });
+    return [...byCat.values()].sort((a, b) => b.total - a.total).map(c => ({
+      name: c.name,
+      total: c.total,
+      color: colorFor(c.name),
+      subs: [...c.subTotals].sort((a, b) => b[1] - a[1]).map(([sub, t]) => ({
+        sub,
+        name: sub || 'Unspecified',
+        total: t,
+        color: subColorFor(c.name, sub),
+      })),
+    }));
+  }
+
+  // Donut arc from angle a0 to a1 (radians, clockwise from 12 o'clock) between radii r0 and r1
+  function arcPath(r0, r1, a0, a1) {
+    const c = CHART_SIZE / 2;
+    const pt = (r, a) => (c + r * Math.sin(a)).toFixed(2) + ' ' + (c - r * Math.cos(a)).toFixed(2);
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    return `M${pt(r1, a0)}A${r1} ${r1} 0 ${large} 1 ${pt(r1, a1)}` +
+      `L${pt(r0, a1)}A${r0} ${r0} 0 ${large} 0 ${pt(r0, a0)}Z`;
+  }
+
+  function isHighlighted(seg) {
+    const s = chartSel;
+    if (!s) return true;
+    if (s.other) return !!seg.other;
+    if (seg.other) return chartData.folded.includes(s.cat);
+    if (seg.cat !== s.cat) return false;
+    // Category selected -> it and all its subs; sub selected -> it and its parent
+    return s.sub === undefined || seg.sub === undefined || seg.sub === s.sub;
+  }
+
+  function sameSel(a, b) {
+    return !!a && !!b && a.other === b.other && a.cat === b.cat && a.sub === b.sub;
+  }
+
+  function selectChart(sel) {
+    chartSel = sameSel(sel, chartSel) ? null : sel;
+    paintChartSelection();
+  }
+
+  // monthExpenses: this month's entries of the chosen type (spending or income)
+  function renderCharts(monthExpenses) {
+    const total = sumAmounts(monthExpenses);
+    document.querySelectorAll('#chartModeToggle button')
+      .forEach(b => b.classList.toggle('active', b.dataset.mode === ui.chartMode));
+    document.querySelectorAll('#chartTypeToggle button')
+      .forEach(b => b.classList.toggle('active', b.dataset.type === ui.chartType));
+    const el = document.getElementById('chartContent');
+    if (!monthExpenses.length) {
+      el.innerHTML = `<div class="empty">No ${ui.chartType === 'income' ? 'income' : 'spending'} this month.<br>Tap + to add some.</div>`;
+      return;
+    }
+    const withSubs = ui.chartMode === 'sub';
+    const cats = buildChartData(monthExpenses);
+
+    // Fold the tail into "Other" so the chart never has more than MAX_DONUT_SLICES slices
+    let slices = cats;
+    let folded = [];
+    if (cats.length > MAX_DONUT_SLICES) {
+      slices = cats.slice(0, MAX_DONUT_SLICES - 1);
+      const rest = cats.slice(MAX_DONUT_SLICES - 1);
+      folded = rest.map(c => c.name);
+      slices.push({ other: true, name: `Other (${rest.length})`, total: rest.reduce((s, c) => s + c.total, 0), color: FALLBACK_COLOR });
+    }
+    chartData = { cats, total, folded };
+
+    // Rings: categories only = one ring; with subcategories = inner categories + outer subcategories
+    const [inner0, inner1] = withSubs ? [62, 90] : [78, 118];
+    const [outer0, outer1] = [93, 122];
+    const TAU = Math.PI * 2;
+    const clampSweep = (a0, sweep) => a0 + Math.min(sweep, TAU - 0.0005);
+    chartSegs = [];
+    let a = 0;
+    slices.forEach(c => {
+      const sweep = c.total / total * TAU;
+      const base = c.other ? { other: true } : { cat: c.name };
+      chartSegs.push({ ...base, d: arcPath(inner0, inner1, a, clampSweep(a, sweep)), color: c.color,
+        label: `${c.name}: ${formatMoney(c.total)}` });
+      if (withSubs) {
+        let sa = a;
+        const subs = c.other ? [{ total: c.total, color: FALLBACK_COLOR }] : c.subs;
+        subs.forEach(s => {
+          const ss = s.total / total * TAU;
+          chartSegs.push({ ...base, sub: c.other ? undefined : s.sub, d: arcPath(outer0, outer1, sa, clampSweep(sa, ss)),
+            color: s.color, label: c.other ? `${c.name}: ${formatMoney(c.total)}` : `${c.name} › ${s.name}: ${formatMoney(s.total)}` });
+          sa += ss;
+        });
+      }
+      a += sweep;
+    });
+
+    // Legend rows double as the full table of values (every category, even folded ones)
+    chartRows = [];
+    const pct = (part, whole) => (part / whole * 100).toFixed(part / whole < 0.1 ? 1 : 0) + '%';
+    cats.forEach(c => {
+      chartRows.push({ sel: { cat: c.name }, cls: '', color: c.color,
+        name: `${iconFor(c.name)} ${c.name}`, pc: pct(c.total, total), amount: c.total });
+      const realSubs = c.subs.some(s => s.sub);
+      if (withSubs && realSubs) {
+        c.subs.forEach(s => chartRows.push({ sel: { cat: c.name, sub: s.sub }, cls: 'sub', color: s.color,
+          name: s.name, pc: pct(s.total, c.total), amount: s.total }));
+      }
+    });
+
+    const hints = ['Tap a slice or a row for details.'];
+    if (withSubs) hints.push('Subcategory % is its share of the category.');
+    if (folded.length) hints.push('Smaller categories are grouped as "Other" in the chart.');
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="chart-wrap">
+          <svg id="chartSvg" viewBox="0 0 ${CHART_SIZE} ${CHART_SIZE}" role="img" aria-label="${ui.chartType === 'income' ? 'Income' : 'Spending'} chart">
+            ${chartSegs.map((s, i) => `<path class="seg" data-i="${i}" d="${s.d}" fill="${s.color}"
+              tabindex="0" role="button" aria-label="${escapeHtml(s.label)}"></path>`).join('')}
+          </svg>
+          <div class="chart-center" id="chartCenter"></div>
+        </div>
+        <p class="hint" style="text-align:center">${hints.join(' ')}</p>
+      </div>
+      <div class="card">
+        <h2>${withSubs ? 'Categories & subcategories' : 'Categories'}</h2>
+        <div id="chartLegend">${chartRows.map((r, i) => `
+          <div class="lg-row ${r.cls}" data-i="${i}">
+            <span class="key" style="background:${r.color}"></span>
+            <span class="nm">${r.cls === 'sub' && !r.sel.sub ? '<i>Unspecified</i>' : escapeHtml(r.name)}</span>
+            <span class="pc">${r.pc}</span>
+            <span class="am">${formatMoney(r.amount)}</span>
+          </div>`).join('')}
+        </div>
+      </div>`;
+    paintChartSelection();
+  }
+
+  function paintChartSelection() {
+    const svg = document.getElementById('chartSvg');
+    if (!svg) return;
+    svg.classList.toggle('has-sel', !!chartSel);
+    svg.querySelectorAll('.seg').forEach(p => p.classList.toggle('sel', isHighlighted(chartSegs[p.dataset.i])));
+    document.querySelectorAll('#chartLegend .lg-row')
+      .forEach(r => r.classList.toggle('sel', sameSel(chartRows[r.dataset.i].sel, chartSel)));
+
+    // Centre readout: value leads, label follows
+    const { cats, total, folded } = chartData;
+    let value = total, label = ui.chartType === 'income' ? 'Total income' : 'Total spent', sub = monthKey(viewDate) === monthKey(new Date()) ? 'this month' : '';
+    const s = chartSel;
+    if (s && s.other) {
+      value = cats.filter(c => folded.includes(c.name)).reduce((t, c) => t + c.total, 0);
+      label = `Other (${folded.length} categories)`;
+      sub = (value / total * 100).toFixed(1) + '% of month';
+    } else if (s) {
+      const c = cats.find(x => x.name === s.cat);
+      if (c && s.sub === undefined) {
+        value = c.total;
+        label = `${iconFor(c.name)} ${c.name}`;
+        sub = (c.total / total * 100).toFixed(1) + '% of month';
+      } else if (c) {
+        const sc = c.subs.find(x => x.sub === s.sub);
+        value = sc.total;
+        label = `${c.name} › ${sc.name}`;
+        sub = `${(sc.total / c.total * 100).toFixed(0)}% of ${c.name} · ${(sc.total / total * 100).toFixed(1)}% of month`;
+      }
+    }
+    const center = document.getElementById('chartCenter');
+    center.innerHTML = '<div class="value"></div><div class="label"></div><div class="pct"></div>';
+    center.children[0].textContent = formatMoney(value);
+    center.children[1].textContent = label;
+    center.children[2].textContent = sub;
+  }
+
+  document.querySelector('.tabs').addEventListener('click', ev => {
+    const b = ev.target.closest('.tab');
+    if (b && b.dataset.tab !== ui.tab) setTab(b.dataset.tab);
+  });
+
+  document.getElementById('chartModeToggle').addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (b && b.dataset.mode !== ui.chartMode) setChartMode(b.dataset.mode);
+  });
+
+  document.getElementById('chartTypeToggle').addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (b && b.dataset.type !== ui.chartType) setChartType(b.dataset.type);
+  });
+
+  document.getElementById('chartContent').addEventListener('click', ev => {
+    const seg = ev.target.closest('.seg');
+    if (seg) {
+      const { other, cat, sub } = chartSegs[seg.dataset.i];
+      return selectChart(other ? { other: true } : { cat, sub });
+    }
+    const row = ev.target.closest('.lg-row');
+    if (row) return selectChart(chartRows[row.dataset.i].sel);
+    if (ev.target.closest('.chart-wrap')) { chartSel = null; paintChartSelection(); }
+  });
+
+  document.getElementById('chartContent').addEventListener('keydown', ev => {
+    if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.classList.contains('seg')) {
+      ev.preventDefault();
+      ev.target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+  });
+
+  function openModal(id) { document.getElementById(id).classList.add('open'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+  // ---------- Add / edit expense ----------
+
+  let entryType = 'expense'; // type being added/edited in the form
+
+  // Switch the form between expense and income; the category list shows only that type
+  function setEntryType(type, category = '', sub = '') {
+    entryType = type;
+    document.querySelectorAll('#entryTypeToggle button')
+      .forEach(b => b.classList.toggle('active', b.dataset.type === type));
+    document.getElementById('expenseModalTitle').textContent = (editingId ? 'Edit ' : 'Add ') + type;
+    if (!category) {
+      const ofType = categories.filter(c => typeOf(c) === type);
+      if (ofType.length === 1) category = ofType[0].name;
+    }
+    fillCategoryOptions(category);
+    fillSubcategoryOptions(category, sub);
+  }
+
+  function fillCategoryOptions(selected) {
+    // Keep an old entry's category selectable even if it was deleted from the list
+    const names = categories.filter(c => typeOf(c) === entryType).map(c => c.name);
+    if (selected && !names.includes(selected)) names.push(selected);
+    document.getElementById('category').innerHTML =
+      '<option value="">— Select category —</option>' +
+      names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(iconFor(n))} ${escapeHtml(n)}</option>`).join('') +
+      `<option value="${ADD_NEW}">➕ Add new category…</option>`;
+    document.getElementById('category').value = selected || '';
+  }
+
+  function fillSubcategoryOptions(category, selected) {
+    const cat = findCategory(category);
+    const subs = cat ? [...cat.subs] : [];
+    if (selected && !subs.includes(selected)) subs.push(selected);
+    const select = document.getElementById('subcategory');
+    select.innerHTML =
+      '<option value="">— None —</option>' +
+      subs.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('') +
+      (category ? `<option value="${ADD_NEW}">➕ Add new subcategory…</option>` : '');
+    select.value = selected || '';
+  }
+
+  function openAdd() {
+    editingId = null;
+    document.getElementById('expenseForm').reset();
+    document.getElementById('date').value = todayISO();
+    setEntryType('expense');
+    document.getElementById('deleteBtn').style.display = 'none';
+    openModal('expenseModal');
+    setTimeout(() => document.getElementById('amount').focus(), 50);
+  }
+
+  function openEdit(id) {
+    const e = expenses.find(x => x.id === id);
+    if (!e) return;
+    editingId = id;
+    document.getElementById('amount').value = e.amount;
+    setEntryType(typeOf(e), e.category, e.subcategory || '');
+    document.getElementById('note').value = e.note;
+    document.getElementById('date').value = e.date;
+    document.getElementById('deleteBtn').style.display = '';
+    openModal('expenseModal');
+  }
+
+  document.getElementById('category').addEventListener('change', ev => {
+    let category = ev.target.value;
+    if (category === ADD_NEW) {
+      category = addCategory(prompt(`New ${entryType} category name:`), '', null, entryType) || '';
+      const cat = findCategory(category);
+      if (cat && typeOf(cat) !== entryType) {
+        alert(`"${cat.name}" already exists as an ${typeOf(cat)} category.`);
+        category = '';
+      }
+      fillCategoryOptions(category);
+    }
+    fillSubcategoryOptions(category, '');
+  });
+
+  document.getElementById('entryTypeToggle').addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (b && b.dataset.type !== entryType) setEntryType(b.dataset.type);
+  });
+
+  document.getElementById('subcategory').addEventListener('change', ev => {
+    if (ev.target.value !== ADD_NEW) return;
+    const category = document.getElementById('category').value;
+    const sub = addSubcategory(category, prompt('New subcategory for ' + category + ':')) || '';
+    fillSubcategoryOptions(category, sub);
+  });
+
+  document.getElementById('expenseForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const data = {
+      amount: parseFloat(document.getElementById('amount').value),
+      category: document.getElementById('category').value,
+      subcategory: document.getElementById('subcategory').value,
+      note: document.getElementById('note').value.trim(),
+      date: document.getElementById('date').value,
+      type: entryType,
+    };
+    if (!(data.amount > 0) || !data.date || !data.category || data.category === ADD_NEW) return;
+    if (data.subcategory === ADD_NEW) data.subcategory = '';
+
+    const editing = editingId && expenses.find(x => x.id === editingId);
+    if (editing) {
+      Object.assign(editing, data);
+    } else if (editingId) {
+      // Deleted on another device while this form was open: saving brings it back
+      expenses.push({ id: editingId, createdAt: Date.now(), ...data });
+    } else {
+      expenses.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), createdAt: Date.now(), ...data });
+    }
+    saveExpenses();
+    // Jump to the month of the saved expense so it's visible
+    const [y, m] = data.date.split('-').map(Number);
+    viewDate = new Date(y, m - 1, 1);
+    closeModal('expenseModal');
+    render();
+  });
+
+  document.getElementById('deleteBtn').addEventListener('click', () => {
+    if (!editingId || !confirm(`Delete this ${entryType}?`)) return;
+    expenses = expenses.filter(x => x.id !== editingId);
+    saveExpenses();
+    closeModal('expenseModal');
+    render();
+  });
+
+  // ---------- Category management ----------
+
+  // Returns the category's name on success (existing name if it's a duplicate), or null
+  function addCategory(name, icon, color, type) {
+    name = (name || '').trim();
+    if (!name || name === ADD_NEW) return null;
+    const existing = findCategory(name);
+    if (existing) return existing.name;
+    categories.push({
+      name,
+      type: typeOf({ type }),
+      icon: (icon || '').trim() || DEFAULT_ICON,
+      color: isPaletteColor(color) ? color.toLowerCase() : nextColor(),
+      subs: [],
+    });
+    saveCategories();
+    return name;
+  }
+
+  function addSubcategory(categoryName, sub) {
+    sub = (sub || '').trim();
+    const cat = findCategory(categoryName);
+    if (!cat || !sub || sub === ADD_NEW) return null;
+    const existing = cat.subs.find(s => s.toLowerCase() === sub.toLowerCase());
+    if (existing) return existing;
+    cat.subs.push(sub);
+    saveCategories();
+    return sub;
+  }
+
+  function deleteCategory(index) {
+    const cat = categories[index];
+    const used = expenses.filter(e => e.category === cat.name).length;
+    const msg = `Delete category "${cat.name}"` + (cat.subs.length ? ' and its subcategories' : '') + '?' +
+      (used ? `\n\n${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still count under "${cat.name}" in totals.` : '');
+    if (!confirm(msg)) return;
+    categories.splice(index, 1);
+    openPicker = null; // indices shift
+    saveCategories();
+    renderCategoryManager();
+    render();
+  }
+
+  function deleteSubcategory(index, subIndex) {
+    const cat = categories[index];
+    const sub = cat.subs[subIndex];
+    const used = expenses.filter(e => e.category === cat.name && e.subcategory === sub).length;
+    const msg = `Delete subcategory "${sub}" from ${cat.name}?` +
+      (used ? `\n\n${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still show under "${sub}".` : '');
+    if (!confirm(msg)) return;
+    cat.subs.splice(subIndex, 1);
+    saveCategories();
+    renderCategoryManager();
+  }
+
+  let newCatColor = null;  // colour chosen for the category being added
+  let newCatType = 'expense';
+  let openPicker = null;   // whose swatch grid is open: 'new', a category index, or null
+
+  function openCategoryManager() {
+    newCatColor = nextColor();
+    newCatType = 'expense';
+    openPicker = null;
+    renderCategoryManager();
+    openModal('categoriesModal');
+  }
+
+  // Swatch grid for one owner ('new' or a category index). Colours taken by other categories
+  // are disabled so families never repeat, unless all 20 are taken.
+  function swatchesHtml(owner, current) {
+    const usedBy = new Map();
+    categories.forEach((c, i) => { if (i !== owner) usedBy.set(String(c.color).toLowerCase(), c.name); });
+    const allTaken = PALETTE.every(p => usedBy.has(p.hex));
+    return `<div class="swatches">
+        <div class="swatch-grid">${PALETTE.map(p => {
+          const taken = !allTaken && usedBy.has(p.hex);
+          return `<button type="button" class="swatch${p.hex === current ? ' selected' : ''}" style="--sw:${p.hex};background:${p.hex}"
+            data-action="pick-color" data-i="${owner}" data-color="${p.hex}" ${taken ? 'disabled' : ''}
+            title="${escapeHtml(taken ? `${p.name} (used by ${usedBy.get(p.hex)})` : p.name)}" aria-label="${p.name}"></button>`;
+        }).join('')}</div>
+        <div class="swatch-name">${escapeHtml(colorName(current) || 'Pick a colour')}</div>
+      </div>`;
+  }
+
+  function renderCategoryManager() {
+    const dot = document.getElementById('newCatColor');
+    dot.style.background = newCatColor;
+    dot.setAttribute('aria-label', 'Colour: ' + colorName(newCatColor));
+    dot.setAttribute('aria-expanded', String(openPicker === 'new'));
+    document.getElementById('newCatSwatches').innerHTML = openPicker === 'new' ? swatchesHtml('new', newCatColor) : '';
+    document.querySelectorAll('#newCatTypeToggle button')
+      .forEach(b => b.classList.toggle('active', b.dataset.type === newCatType));
+    document.getElementById('newCatName').placeholder = `New ${newCatType} category`;
+
+    // Two sections; data-i stays the index into the full categories array
+    const section = (type, title) => {
+      const items = categories.map((c, i) => [c, i]).filter(([c]) => typeOf(c) === type);
+      return `<div class="mgr-section">${title}${items.length ? '' : '<div class="empty">None yet</div>'}</div>` +
+        items.map(([c, i]) => categoryManagerRow(c, i)).join('');
+    };
+    document.getElementById('categoryManager').innerHTML =
+      section('income', 'Income categories') + section('expense', 'Expense categories');
+  }
+
+  function categoryManagerRow(c, i) {
+    return `
+      <div class="mgr-cat">
+        <div class="mgr-head">
+          <span class="mgr-name">
+            <button type="button" class="color-dot" style="background:${colorFor(c.name)}" data-action="toggle-picker" data-i="${i}"
+              aria-expanded="${openPicker === i}" aria-label="Colour for ${escapeHtml(c.name)}: ${colorName(c.color)}"></button>
+            <span>${escapeHtml(c.icon || DEFAULT_ICON)} ${escapeHtml(c.name)}</span>
+          </span>
+          <button class="icon-btn" data-action="delete-cat" data-i="${i}">🗑 Delete</button>
+        </div>
+        ${openPicker === i ? swatchesHtml(i, colorFor(c.name)) : ''}
+        ${c.subs.length
+          ? `<div class="chips">${c.subs.map((s, j) => `
+              <span class="chip"><span class="dot" style="background:${subColorFor(c.name, s)}"></span>${escapeHtml(s)}<button data-action="delete-sub" data-i="${i}" data-j="${j}" aria-label="Remove">✕</button></span>`).join('')}
+            </div>`
+          : '<div class="no-subs">No subcategories</div>'}
+        <form class="add-row add-sub" data-i="${i}">
+          <input type="text" placeholder="Add subcategory to ${escapeHtml(c.name)}" required>
+          <button type="submit" class="btn secondary small">+</button>
+        </form>
+      </div>`;
+  }
+
+  document.getElementById('addCategoryForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const nameInput = document.getElementById('newCatName');
+    const iconInput = document.getElementById('newCatIcon');
+    const existing = findCategory(nameInput.value.trim());
+    if (existing) {
+      alert(`"${existing.name}" already exists as an ${typeOf(existing)} category.`);
+      return;
+    }
+    if (addCategory(nameInput.value, iconInput.value, newCatColor, newCatType)) {
+      nameInput.value = '';
+      iconInput.value = '';
+      newCatColor = nextColor();
+      openPicker = null;
+      renderCategoryManager();
+      render();
+    }
+  });
+
+  document.getElementById('newCatTypeToggle').addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (!b) return;
+    newCatType = b.dataset.type;
+    renderCategoryManager();
+    document.getElementById('newCatName').focus();
+  });
+
+  // Colour dots and swatches live both in the add form and in the list, so listen on the modal
+  document.getElementById('categoriesModal').addEventListener('click', ev => {
+    const btn = ev.target.closest('[data-action]');
+    if (!btn) return;
+    const owner = btn.dataset.i === 'new' ? 'new' : Number(btn.dataset.i);
+    const action = btn.dataset.action;
+    if (action === 'delete-cat') deleteCategory(owner);
+    if (action === 'delete-sub') deleteSubcategory(owner, Number(btn.dataset.j));
+    if (action === 'toggle-picker') {
+      openPicker = openPicker === owner ? null : owner;
+      renderCategoryManager();
+    }
+    if (action === 'pick-color') {
+      if (owner === 'new') {
+        newCatColor = btn.dataset.color;
+      } else {
+        categories[owner].color = btn.dataset.color;
+        saveCategories();
+        render();
+      }
+      openPicker = null;
+      renderCategoryManager();
+    }
+  });
+
+  document.getElementById('categoryManager').addEventListener('submit', ev => {
+    const form = ev.target.closest('.add-sub');
+    if (!form) return;
+    ev.preventDefault();
+    const input = form.querySelector('input');
+    const cat = categories[Number(form.dataset.i)];
+    if (addSubcategory(cat.name, input.value)) {
+      renderCategoryManager();
+      // Keep typing into the same category's box
+      const again = document.querySelector(`#categoryManager .add-sub[data-i="${form.dataset.i}"] input`);
+      if (again) again.focus();
+    }
+  });
+
+  // ---------- Backup ----------
+
+  function exportData() {
+    const blob = new Blob([JSON.stringify({ version: 2, expenses, categories }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'money-manager-backup-' + todayISO() + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function importData(ev) {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        const incoming = Array.isArray(parsed) ? parsed : parsed.expenses;
+        if (!Array.isArray(incoming)) throw new Error('bad format');
+        const existing = new Set(expenses.map(e => e.id));
+        // Entries you deleted stay deleted, even if an older backup still has them
+        const added = incoming.filter(e => e && e.id && !existing.has(e.id) && !deleted.entries[e.id] &&
+          e.amount > 0 && e.date && e.category);
+        expenses.push(...added);
+        saveExpenses();
+
+        if (Array.isArray(parsed.categories)) {
+          parsed.categories.forEach(c => {
+            if (!c || typeof c.name !== 'string') return;
+            const name = addCategory(c.name, c.icon, c.color, c.type);
+            (Array.isArray(c.subs) ? c.subs : []).forEach(s => {
+              if (typeof s === 'string') addSubcategory(name, s);
+            });
+          });
+        }
+        ensureCategoriesFor(added);
+        normalizeCategoryColors();
+        saveCategories();
+
+        render();
+        alert(`Imported ${added.length} new entr${added.length === 1 ? 'y' : 'ies'}.`);
+        closeModal('settingsModal');
+      } catch {
+        alert('That file does not look like a Money Manager backup.');
+      }
+      ev.target.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- GitHub sync ----------
+  // Optional. The browser's storage stays the main copy; when sync is set up, this device merges
+  // its data with one JSON file in the user's private GitHub repo and writes the result back.
+  // Per entry/category the newer change wins, and anything deleted after its last change is dropped.
+
+  function scheduleSync(delay = 2000) {
+    if (!syncConfig) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncNow, delay);
+  }
+
+  function itemStamp(item) {
+    return item.updatedAt || item.createdAt || 0;
+  }
+
+  // Remote order first so every device ends up with the same order
+  function mergeLists(local, remote, keyOf, deletedMap) {
+    const byKey = new Map();
+    [...remote, ...local].forEach(item => {
+      const cur = byKey.get(keyOf(item));
+      if (!cur || itemStamp(item) > itemStamp(cur)) byKey.set(keyOf(item), item);
+    });
+    return [...byKey.values()].filter(item => !(deletedMap[keyOf(item)] >= itemStamp(item)));
+  }
+
+  function mergeDeleted(a, b) {
+    const out = { ...a };
+    Object.entries(b || {}).forEach(([k, t]) => { if (!(out[k] >= t)) out[k] = t; });
+    return out;
+  }
+
+  // Merge the remote file into local data, save it here, and return what the file should contain
+  function applyRemote(remote) {
+    if (remote) {
+      const rd = remote.deleted || {};
+      deleted = {
+        entries: mergeDeleted(deleted.entries, rd.entries),
+        categories: mergeDeleted(deleted.categories, rd.categories),
+      };
+      const remoteEntries = (Array.isArray(remote.expenses) ? remote.expenses : []).filter(e => e && e.id);
+      const remoteCats = (Array.isArray(remote.categories) ? remote.categories : []).filter(c => c && typeof c.name === 'string');
+      expenses = mergeLists(expenses, remoteEntries, entryKey, deleted.entries);
+      categories = mergeLists(categories, remoteCats, categoryKey, deleted.categories);
+      savedEntries = snapshotMap(expenses, entryKey);
+      savedCategories = snapshotMap(categories, categoryKey);
+      // Two devices may have picked the same colour for different new categories
+      if (normalizeCategoryColors()) savedCategories = trackChanges(categories, savedCategories, categoryKey, deleted.categories);
+      persistData();
+      render();
+      if (document.getElementById('categoriesModal').classList.contains('open')) renderCategoryManager();
+    }
+    return { version: 3, expenses, categories, deleted };
+  }
+
+  async function syncNow() {
+    if (!syncConfig) return;
+    if (syncing) { syncAgain = true; return; }
+    clearTimeout(syncTimer);
+    syncTimer = null;
+    syncing = true;
+    syncAgain = false;
+    setSyncStatus('syncing');
+    try {
+      for (let attempt = 0; ; attempt++) {
+        const remote = await githubRead();
+        const text = JSON.stringify(applyRemote(remote && remote.data), null, 1);
+        if (remote && text === remote.text) break; // already up to date
+        try {
+          await githubWrite(text, remote && remote.sha);
+          break;
+        } catch (err) {
+          // Another device wrote in between: read again and re-merge
+          if ((err.status === 409 || err.status === 422) && attempt < 2) continue;
+          throw err;
+        }
+      }
+      syncConfig.lastSync = Date.now();
+      localStorage.setItem(SYNC_KEY, JSON.stringify(syncConfig));
+      setSyncStatus('ok');
+    } catch (err) {
+      setSyncStatus(err.offline ? 'offline' : 'error', err.message);
+    } finally {
+      syncing = false;
+      if (syncAgain) scheduleSync(300);
+    }
+  }
+
+  async function githubFetch(path, opts = {}) {
+    const { owner, repo, token } = syncConfig;
+    try {
+      return await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}${path}`, {
+        ...opts,
+        cache: 'no-store', // GitHub responses are cacheable for 60s; we always need the latest
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', ...opts.headers },
+      });
+    } catch {
+      throw Object.assign(new Error('No internet connection. Will sync when you are back online.'), { offline: true });
+    }
+  }
+
+  function githubError(res) {
+    const messages = {
+      401: 'GitHub rejected the access token. It may be mistyped or expired; create a new one.',
+      403: 'The token is not allowed to do this. It needs "Contents: Read and write" access to this repository.',
+      404: 'Repository not found. Check the username and repository name, and that the token has access to it.',
+    };
+    return Object.assign(new Error(messages[res.status] || `GitHub error ${res.status}.`), { status: res.status });
+  }
+
+  function githubFilePath() {
+    return syncConfig.path.split('/').map(encodeURIComponent).join('/');
+  }
+
+  // Returns { text, data, sha } or null if the file doesn't exist yet
+  async function githubRead() {
+    const res = await githubFetch(`/contents/${githubFilePath()}`);
+    if (res.status === 404) {
+      const repoRes = await githubFetch(''); // repo missing vs. file not created yet
+      if (!repoRes.ok) throw githubError(repoRes);
+      return null;
+    }
+    if (!res.ok) throw githubError(res);
+    const meta = await res.json();
+    if (Array.isArray(meta)) throw new Error(`"${syncConfig.path}" is a folder; use a file name instead.`);
+    let b64 = meta.content;
+    if (meta.encoding !== 'base64' || !b64) {
+      // Files over 1 MB come without content; fetch them as a blob instead
+      const blobRes = await githubFetch(`/git/blobs/${meta.sha}`);
+      if (!blobRes.ok) throw githubError(blobRes);
+      b64 = (await blobRes.json()).content;
+    }
+    const text = fromBase64(b64);
+    try {
+      return { text, data: JSON.parse(text), sha: meta.sha };
+    } catch {
+      throw new Error(`"${syncConfig.path}" in your repository is not Money Manager data.`);
+    }
+  }
+
+  async function githubWrite(text, sha) {
+    const res = await githubFetch(`/contents/${githubFilePath()}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Money Manager sync', content: toBase64(text), ...(sha ? { sha } : {}) }),
+    });
+    if (!res.ok) throw githubError(res);
+  }
+
+  // UTF-8 safe base64 (btoa/atob alone break on ₹ and emoji)
+  function toBase64(str) {
+    let bin = '';
+    new TextEncoder().encode(str).forEach(b => { bin += String.fromCharCode(b); });
+    return btoa(bin);
+  }
+
+  function fromBase64(b64) {
+    const bin = atob(b64.replace(/\s/g, ''));
+    return new TextDecoder().decode(Uint8Array.from(bin, ch => ch.charCodeAt(0)));
+  }
+
+  let syncState = { state: 'ok', message: '' };
+
+  function setSyncStatus(state, message = '') {
+    syncState = { state, message };
+    const pill = document.getElementById('syncPill');
+    pill.hidden = !syncConfig;
+    pill.textContent = { syncing: '⟳ Syncing…', ok: '☁️ Synced', offline: '☁️ Offline', error: '⚠️ Sync error' }[state];
+    pill.title = message || pill.textContent;
+    const text = document.getElementById('syncStatusText');
+    text.classList.toggle('error', state === 'error');
+    if (!syncConfig) text.textContent = 'Sync is off. Data is stored only in this browser.';
+    else if (state === 'syncing') text.textContent = 'Syncing…';
+    else if (message) text.textContent = message;
+    else text.textContent = syncConfig.lastSync
+      ? 'Last synced ' + new Date(syncConfig.lastSync).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+      : 'Not synced yet.';
+  }
+
+  function openSyncSetup() {
+    const c = syncConfig || {};
+    document.getElementById('syncOwner').value = c.owner || '';
+    document.getElementById('syncRepo').value = c.repo || '';
+    const token = document.getElementById('syncToken');
+    token.value = '';
+    token.required = !c.token;
+    token.placeholder = c.token ? 'Saved (leave empty to keep it)' : 'github_pat_…';
+    document.getElementById('syncPath').value = c.path || 'money-manager.json';
+    document.getElementById('syncDisconnect').hidden = !syncConfig;
+    setSyncStatus(syncState.state, syncState.message);
+    openModal('syncModal');
+  }
+
+  document.getElementById('syncForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    let owner = document.getElementById('syncOwner').value.trim();
+    let repo = document.getElementById('syncRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+    if (repo.includes('/')) [owner, repo] = repo.split('/'); // pasted "owner/repo" or a repo URL
+    const token = document.getElementById('syncToken').value.trim() || (syncConfig && syncConfig.token);
+    const path = document.getElementById('syncPath').value.trim().replace(/^\/+/, '') || 'money-manager.json';
+    if (!owner || !repo || !token) return;
+    const sameTarget = syncConfig && syncConfig.owner === owner && syncConfig.repo === repo && syncConfig.path === path;
+    syncConfig = { owner, repo, token, path, lastSync: sameTarget ? syncConfig.lastSync : null };
+    localStorage.setItem(SYNC_KEY, JSON.stringify(syncConfig));
+    document.getElementById('syncDisconnect').hidden = false;
+    await syncNow();
+  });
+
+  document.getElementById('syncDisconnect').addEventListener('click', () => {
+    if (!confirm('Turn off sync on this device?\n\nYour data stays in this browser, and the copy on GitHub is not deleted.')) return;
+    syncConfig = null;
+    clearTimeout(syncTimer);
+    localStorage.removeItem(SYNC_KEY);
+    setSyncStatus('ok');
+    closeModal('syncModal');
+  });
+
+  // Pick up changes from other devices when the app is opened or brought back, and push
+  // pending changes right away when it's put in the background
+  document.addEventListener('visibilitychange', () => {
+    if (!syncConfig) return;
+    if (document.visibilityState === 'visible' || syncTimer) syncNow();
+  });
+  window.addEventListener('online', () => syncNow());
+
+  // ---------- First-run guide ----------
+
+  const GUIDE_KEY = 'moneyManager.guideSeen.v1';
+  // target: selectors whose combined area gets the spotlight; no target = centred card
+  const GUIDE_STEPS = [
+    {
+      title: 'Welcome to Money Manager 👋',
+      text: 'Track your income and expenses month by month. Everything is saved on this device. Here is a quick tour.',
+      next: 'Start tour',
+    },
+    {
+      target: ['.menu-btn'],
+      title: 'Menu: start here',
+      text: 'Tap ⋮ → Manage categories to create your categories first: expense ones like Food or Rent, ' +
+        'and income ones like Salary. The menu also has GitHub sync, backups, and this guide.',
+    },
+    {
+      target: ['.total-sub', '#monthBalance', '.stats'],
+      title: 'Your month at a glance',
+      text: 'Income minus expenses gives your balance for the month.',
+    },
+    {
+      target: ['.month-nav'],
+      title: 'Change month',
+      text: 'Use ‹ and › to look at earlier or later months.',
+    },
+    {
+      target: ['.tabs'],
+      title: 'Transactions and Charts',
+      text: 'Transactions lists everything you added, day by day. Charts shows where your money goes and comes from.',
+    },
+    {
+      target: ['.fab'],
+      radius: '50%',
+      title: 'Add income or an expense',
+      text: 'Tap + and choose Expense or Income at the top of the form, then pick a category and enter the amount.',
+    },
+    { final: true },
+  ];
+  let guideIndex = 0;
+
+  function startGuide() {
+    guideIndex = 0;
+    window.scrollTo(0, 0);
+    document.getElementById('guide').hidden = false;
+    showGuideStep();
+  }
+
+  function endGuide() {
+    document.getElementById('guide').hidden = true;
+    localStorage.setItem(GUIDE_KEY, '1');
+  }
+
+  function showGuideStep() {
+    let step = GUIDE_STEPS[guideIndex];
+    if (step.final) {
+      step = categories.length
+        ? { title: "You're all set", text: 'You can see this guide again any time from ⋮ → Show guide.', next: 'Done' }
+        : { title: "You're all set", text: 'Start by creating your categories. You can see this guide again from ⋮ → Show guide.',
+            next: 'Create categories', action: openCategoryManager };
+    }
+    const guide = document.getElementById('guide');
+    const hole = document.getElementById('guideHole');
+    const card = document.getElementById('guideCard');
+    document.getElementById('guideStep').textContent = `${guideIndex + 1} of ${GUIDE_STEPS.length}`;
+    document.getElementById('guideTitle').textContent = step.title;
+    document.getElementById('guideText').textContent = step.text;
+    document.getElementById('guideBack').hidden = guideIndex === 0;
+    document.getElementById('guideSkip').hidden = guideIndex === GUIDE_STEPS.length - 1;
+    const next = document.getElementById('guideNext');
+    next.textContent = step.next || 'Next';
+    next.onclick = () => {
+      if (guideIndex < GUIDE_STEPS.length - 1) { guideIndex++; showGuideStep(); return; }
+      endGuide();
+      if (step.action) step.action();
+    };
+    guide.classList.toggle('centered', !step.target);
+
+    const margin = 12, w = card.offsetWidth, h = card.offsetHeight;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+    if (!step.target) {
+      card.style.left = (innerWidth - w) / 2 + 'px';
+      card.style.top = (innerHeight - h) / 2 + 'px';
+    } else {
+      const rects = step.target.map(s => document.querySelector(s).getBoundingClientRect());
+      const pad = 6;
+      const r = {
+        left: Math.min(...rects.map(x => x.left)) - pad,
+        top: Math.min(...rects.map(x => x.top)) - pad,
+        right: Math.max(...rects.map(x => x.right)) + pad,
+        bottom: Math.max(...rects.map(x => x.bottom)) + pad,
+      };
+      Object.assign(hole.style, {
+        left: r.left + 'px', top: r.top + 'px',
+        width: r.right - r.left + 'px', height: r.bottom - r.top + 'px',
+        borderRadius: step.radius || '14px',
+      });
+      // Card goes below targets in the top half of the screen, above those in the bottom half
+      const below = (r.top + r.bottom) / 2 < innerHeight / 2;
+      card.style.top = clamp(below ? r.bottom + margin : r.top - margin - h, margin, innerHeight - h - margin) + 'px';
+      card.style.left = clamp((r.left + r.right) / 2 - w / 2, margin, innerWidth - w - margin) + 'px';
+    }
+    next.focus();
+  }
+
+  document.getElementById('guideBack').addEventListener('click', () => { guideIndex--; showGuideStep(); });
+  document.getElementById('guideSkip').addEventListener('click', endGuide);
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && !document.getElementById('guide').hidden) endGuide();
+  });
+  window.addEventListener('resize', () => {
+    if (!document.getElementById('guide').hidden) showGuideStep();
+  });
+
+  render();
+  setSyncStatus(syncConfig && syncConfig.lastSync ? 'ok' : 'syncing');
+  syncNow();
+  // Only for someone genuinely new: never seen the guide and nothing added yet
+  if (!localStorage.getItem(GUIDE_KEY) && !expenses.length && !categories.length) startGuide();
+
+  // Offline support + "install as app"; only works when served over http(s), e.g. GitHub Pages
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+</script>
+</body>
+</html>
