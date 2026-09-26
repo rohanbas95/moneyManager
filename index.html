@@ -458,23 +458,26 @@
     font-weight: 600;
   }
   .segmented button.active { background: var(--accent); color: #fff; }
-  .chart-wrap { position: relative; width: 100%; max-width: 300px; margin: 0 auto; aspect-ratio: 1; }
-  .chart-wrap svg { display: block; width: 100%; height: 100%; }
+  .chart-wrap { position: relative; width: 100%; max-width: 380px; margin: 0 auto; container-type: inline-size; }
+  .chart-wrap svg { display: block; width: 100%; height: auto; }
   .seg { stroke: var(--card); stroke-width: 2; cursor: pointer; transition: opacity 0.15s; outline: none; }
   .has-sel .seg:not(.sel) { opacity: 0.25; }
   .seg:focus-visible { stroke: var(--text); }
+  .seg-label { font-weight: 600; pointer-events: none; transition: opacity 0.15s; }
+  .has-sel .seg-label:not(.sel) { opacity: 0.25; }
+  .seg-callout path { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+  .seg-callout circle { fill: var(--text); stroke: var(--card); stroke-width: 1.5; }
+  .seg-callout text { fill: var(--text); pointer-events: auto; cursor: pointer; }
   .chart-center {
     position: absolute;
-    inset: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0 30%;
     text-align: center;
     pointer-events: none;
   }
-  .chart-center .value { font-size: 22px; font-weight: 700; }
+  .chart-center .value { font-size: min(22px, 6.2cqw); font-weight: 700; white-space: nowrap; }
   .chart-center .label {
     max-width: 100%;
     margin-top: 2px;
@@ -1385,6 +1388,85 @@
     paintChartSelection();
   }
 
+  let measureCtx = null;
+  function textWidth(text, fontSize) {
+    measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+    measureCtx.font = `600 ${fontSize}px ${getComputedStyle(document.body).fontFamily}`;
+    return measureCtx.measureText(text).width;
+  }
+
+  const CHART_PAD_X = 48;   // room either side of the ring for callout names
+  const CALLOUT_SIZE = 12.5;
+
+  // Slice names, each as a callout outside the ring with a line to a dot on its slice. Each callout sits
+  // at the nearest height where its whole name fits beside the ring (there's little room level with the
+  // middle), stacking outwards in slice order so lines never cross.
+  // Returns { svg, padY } where padY is the room above and below the ring the callouts need.
+  function chartLabels(outerR) {
+    const c = CHART_SIZE / 2;
+    const pt = (r, a) => (c + r * Math.sin(a)).toFixed(2) + ' ' + (c - r * Math.cos(a)).toFixed(2);
+    const ring = outerR + 14;
+    const out = chartSegs.flatMap((s, i) => {
+      if (!s.name) return [];
+      const m = (s.a0 + s.a1) / 2;
+      return [{ i, s, m, r: (s.r0 + s.r1) / 2, side: Math.sin(m) >= 0 ? 1 : -1, dy: -ring * Math.cos(m) }];
+    });
+
+    const LH = CALLOUT_SIZE * 1.3, BAND = ring * 0.62, half = c + CHART_PAD_X;
+    const hugX = y => Math.sqrt(Math.max(0, ring * ring - y * y)) + 4; // just outside the ring at height y
+    out.forEach(o => {
+      o.x1 = (outerR + 8) * Math.sin(o.m); o.y1 = -(outerR + 8) * Math.cos(o.m);
+      // Names sit no nearer the middle than their slice's elbow, so lines stay side by side. A long name
+      // that wouldn't fit there moves to the lowest height (from the middle) where it fits beside the ring.
+      const maxX = half - textWidth(o.s.name, CALLOUT_SIZE) - 18;
+      const fitY = maxX <= 0 || maxX >= Math.abs(o.x1) ? 0 : Math.sqrt(Math.max(0, ring * ring - maxX * maxX));
+      o.want = Math.max(Math.abs(o.dy), BAND, Math.min(fitY, ring));
+    });
+    [1, -1].forEach(side => [-1, 1].forEach(cap => {
+      // cap -1: above the middle, 1: below. Taken in slice order, nearest the middle first,
+      // each at its wanted height or pushed just clear of the previous one, and never further out
+      // sideways than the previous one so the lines fan out without crossing.
+      let edge = BAND - LH, prevX = Infinity;
+      out.filter(o => o.side === side && (o.dy < 0 ? -1 : 1) === cap)
+        .sort((a, b) => cap * (a.dy - b.dy))
+        .forEach(o => {
+          edge = Math.max(o.want, edge + LH);
+          o.y = cap * edge;
+          let x0 = hugX(o.y);
+          if (half - Math.max(x0, Math.abs(o.x1)) - 11 >= textWidth(o.s.name, CALLOUT_SIZE)) x0 = Math.max(x0, Math.abs(o.x1));
+          o.x0 = prevX = Math.max(hugX(o.y), Math.min(x0, prevX));
+        });
+    }));
+
+    const callouts = out.map(o => {
+      // Distance from the centre to the nearest point of the elbow→name line
+      const clearance = (x1, y1, x) => {
+        const dx = o.side * x - x1, dy = o.y - y1, len = Math.hypot(dx, dy) || 1;
+        const t = Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / (len * len)));
+        return Math.hypot(x1 + t * dx, y1 + t * dy);
+      };
+      let x0 = o.x0;
+      // If the line would clip the ring, first push its elbow a little further out, then the name
+      let er = outerR + 8, x1 = o.x1, y1 = o.y1;
+      const bend = () => { x1 = er * Math.sin(o.m); y1 = -er * Math.cos(o.m); };
+      while (clearance(x1, y1, x0) < outerR + 3 && er < outerR + 28) { er += 2; bend(); }
+      while (clearance(x1, y1, x0) < outerR + 3 && x0 < half - 30) x0 += 3;
+      const room = half - x0 - 11;
+      let text = o.s.name;
+      while (text.length > 2 && textWidth(text, CALLOUT_SIZE) > room) text = o.s.name.slice(0, text.length - 2).trimEnd() + '…';
+      const X = v => (c + o.side * v).toFixed(2), Y = v => (c + v).toFixed(2);
+      return `<g class="seg-label seg-callout" data-i="${o.i}">
+        <path d="M${pt(o.r, o.m)}L${(c + x1).toFixed(2)} ${Y(y1)}L${X(x0)} ${Y(o.y)}L${X(x0 + 6)} ${Y(o.y)}"></path>
+        <circle cx="${(c + o.r * Math.sin(o.m)).toFixed(2)}" cy="${(c - o.r * Math.cos(o.m)).toFixed(2)}" r="2.6"></circle>
+        <text x="${X(x0 + 9)}" y="${Y(o.y)}" font-size="${CALLOUT_SIZE}" text-anchor="${o.side > 0 ? 'start' : 'end'}"
+          dominant-baseline="central">${escapeHtml(text)}</text>
+      </g>`;
+    });
+
+    const reach = out.reduce((mx, o) => Math.max(mx, Math.abs(o.y)), 0) + LH / 2 + 2;
+    return { svg: callouts.join(''), padY: Math.max(6, reach - c) };
+  }
+
   // monthExpenses: entries in the chosen period of the chosen type (spending or income)
   function renderCharts(monthExpenses) {
     const total = sumAmounts(monthExpenses);
@@ -1422,14 +1504,16 @@
       const sweep = c.total / total * TAU;
       const base = c.other ? { other: true } : { cat: c.name };
       chartSegs.push({ ...base, d: arcPath(inner0, inner1, a, clampSweep(a, sweep)), color: c.color,
-        label: `${c.name}: ${formatMoney(c.total)}` });
+        label: `${c.name}: ${formatMoney(c.total)}`, name: c.other ? 'Other' : c.name, r0: inner0, r1: inner1, a0: a, a1: a + sweep });
       if (withSubs) {
         let sa = a;
         const subs = c.other ? [{ total: c.total, color: FALLBACK_COLOR }] : c.subs;
         subs.forEach(s => {
           const ss = s.total / total * TAU;
           chartSegs.push({ ...base, sub: c.other ? undefined : s.sub, d: arcPath(outer0, outer1, sa, clampSweep(sa, ss)),
-            color: s.color, label: c.other ? `${c.name}: ${formatMoney(c.total)}` : `${c.name} › ${s.name}: ${formatMoney(s.total)}` });
+            color: s.color, label: c.other ? `${c.name}: ${formatMoney(c.total)}` : `${c.name} › ${s.name}: ${formatMoney(s.total)}`,
+            // Outer ring names only real subcategories; "Other" is already named on the inner ring
+            name: c.other || !s.sub ? '' : s.name, r0: outer0, r1: outer1, a0: sa, a1: sa + ss });
           sa += ss;
         });
       }
@@ -1453,14 +1537,21 @@
     if (withSubs) hints.push('Subcategory % is its share of the category.');
     if (folded.length) hints.push('Smaller categories are grouped as "Other" in the chart.');
 
+    const labels = chartLabels(withSubs ? outer1 : inner1);
+    const W = CHART_SIZE + 2 * CHART_PAD_X, H = CHART_SIZE + 2 * labels.padY;
+    // Centre readout sits over the hole: the middle 40% of the ring's box
+    const centreBox = `left:${(CHART_PAD_X + CHART_SIZE * 0.3) / W * 100}%;width:${CHART_SIZE * 0.4 / W * 100}%;` +
+      `top:${labels.padY / H * 100}%;height:${CHART_SIZE / H * 100}%`;
+
     el.innerHTML = `
       <div class="card">
         <div class="chart-wrap">
-          <svg id="chartSvg" viewBox="0 0 ${CHART_SIZE} ${CHART_SIZE}" role="img" aria-label="${ui.chartType === 'income' ? 'Income' : 'Spending'} chart">
+          <svg id="chartSvg" viewBox="${-CHART_PAD_X} ${-labels.padY} ${W} ${H}" role="img" aria-label="${ui.chartType === 'income' ? 'Income' : 'Spending'} chart">
             ${chartSegs.map((s, i) => `<path class="seg" data-i="${i}" d="${s.d}" fill="${s.color}"
               tabindex="0" role="button" aria-label="${escapeHtml(s.label)}"></path>`).join('')}
+            ${labels.svg}
           </svg>
-          <div class="chart-center" id="chartCenter"></div>
+          <div class="chart-center" id="chartCenter" style="${centreBox}"></div>
         </div>
         <p class="hint" style="text-align:center">${hints.join(' ')}</p>
       </div>
@@ -1482,7 +1573,7 @@
     const svg = document.getElementById('chartSvg');
     if (!svg) return;
     svg.classList.toggle('has-sel', !!chartSel);
-    svg.querySelectorAll('.seg').forEach(p => p.classList.toggle('sel', isHighlighted(chartSegs[p.dataset.i])));
+    svg.querySelectorAll('.seg, .seg-label').forEach(p => p.classList.toggle('sel', isHighlighted(chartSegs[p.dataset.i])));
     document.querySelectorAll('#chartLegend .lg-row')
       .forEach(r => r.classList.toggle('sel', sameSel(chartRows[r.dataset.i].sel, chartSel)));
 
@@ -1531,7 +1622,7 @@
   });
 
   document.getElementById('chartContent').addEventListener('click', ev => {
-    const seg = ev.target.closest('.seg');
+    const seg = ev.target.closest('.seg, .seg-callout');
     if (seg) {
       const { other, cat, sub } = chartSegs[seg.dataset.i];
       return selectChart(other ? { other: true } : { cat, sub });
