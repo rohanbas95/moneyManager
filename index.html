@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0f766e">
+<meta name="color-scheme" content="light dark">
 <title>Money Manager</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
@@ -11,6 +12,13 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Money">
+<script>
+  // Apply the saved theme before anything is drawn so the page never flashes the wrong one
+  try {
+    const t = localStorage.getItem('moneyManager.theme.v1');
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
 <style>
   :root {
     --bg: #f4f5f7;
@@ -22,8 +30,12 @@
     --border: #e5e7eb;
     --income: #15803d;
   }
+  /* Theme: follows the phone's setting unless Light or Dark is picked in the menu (html[data-theme]).
+     The two dark blocks must stay identical. */
+  :root[data-theme="light"] { color-scheme: light; }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
       --bg: #111827;
       --card: #1f2937;
       --text: #f3f4f6;
@@ -32,6 +44,17 @@
       --income: #4ade80;
     }
   }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111827;
+    --card: #1f2937;
+    --text: #f3f4f6;
+    --muted: #9ca3af;
+    --border: #374151;
+    --income: #4ade80;
+  }
+  .setting-label { margin: 20px 0 6px; font-size: 13px; color: var(--muted); }
+  .setting-label + .segmented { margin-bottom: 0; }
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -64,7 +87,41 @@
     height: 40px;
     border-radius: 50%;
   }
-  .month-label { font-size: 16px; font-weight: 500; }
+  .month-nav button.nav-hidden { visibility: hidden; }
+  .month-nav .month-label {
+    width: auto;
+    height: auto;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.12);
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.25;
+  }
+  .month-label .caret { font-size: 11px; opacity: 0.8; margin-left: 4px; }
+  .month-label .dates { display: block; font-size: 11px; font-weight: 400; opacity: 0.85; }
+
+  /* Period picker */
+  .period-list { display: flex; flex-direction: column; gap: 8px; }
+  .period-opt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 16px;
+    text-align: left;
+  }
+  .period-opt .when { font-size: 13px; color: var(--muted); }
+  .period-opt.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
+  .period-opt.active .when::after { content: ' ✓'; color: var(--accent); font-weight: 700; }
+  .range-inputs { display: flex; gap: 8px; }
+  .range-inputs > div { flex: 1; min-width: 0; }
+  .custom-title { margin: 20px 0 0; font-size: 15px; }
   .total { font-size: 32px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
   .total.negative { color: #fecaca; }
   .total-sub { font-size: 12px; opacity: 0.85; text-align: center; margin-top: 8px; }
@@ -452,9 +509,9 @@
   <button class="sync-pill" id="syncPill" hidden onclick="openSyncSetup()"></button>
   <button class="menu-btn" onclick="openModal('settingsModal')">⋮</button>
   <div class="month-nav">
-    <button onclick="changeMonth(-1)">‹</button>
-    <span class="month-label" id="monthLabel"></span>
-    <button onclick="changeMonth(1)">›</button>
+    <button id="prevMonth" onclick="changeMonth(-1)" aria-label="Previous month">‹</button>
+    <button class="month-label" id="monthLabel" onclick="openPeriodPicker()" aria-label="Choose period"></button>
+    <button id="nextMonth" onclick="changeMonth(1)" aria-label="Next month">›</button>
   </div>
   <div class="total-sub">Balance</div>
   <div class="total" id="monthBalance"></div>
@@ -607,10 +664,43 @@
   </div>
 </div>
 
+<!-- Period picker -->
+<div class="modal-bg" id="periodModal" onclick="if (event.target === this) closeModal('periodModal')">
+  <div class="modal">
+    <h3>Show period</h3>
+    <div class="period-list" id="periodList"></div>
+    <form id="customRangeForm">
+      <h4 class="custom-title">Custom range</h4>
+      <div class="range-inputs">
+        <div>
+          <label for="rangeStart">From</label>
+          <input type="date" id="rangeStart" required>
+        </div>
+        <div>
+          <label for="rangeEnd">To</label>
+          <input type="date" id="rangeEnd" required>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button type="submit" class="btn primary">Show this range</button>
+      </div>
+    </form>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closeModal('periodModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Settings / backup -->
 <div class="modal-bg" id="settingsModal" onclick="if (event.target === this) closeModal('settingsModal')">
   <div class="modal">
     <h3>Settings</h3>
+    <div class="setting-label">Theme</div>
+    <div class="segmented" id="themeToggle">
+      <button type="button" data-theme-opt="system">📱 System</button>
+      <button type="button" data-theme-opt="light">☀️ Light</button>
+      <button type="button" data-theme-opt="dark">🌙 Dark</button>
+    </div>
     <div class="btn-row">
       <button class="btn primary" onclick="closeModal('settingsModal'); openCategoryManager()">Manage categories</button>
     </div>
@@ -701,6 +791,13 @@
   const UI_KEY = 'moneyManager.ui.v1';
   let ui = { tab: 'expenses', chartMode: 'cat', chartType: 'expense' };
   try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY))); } catch {}
+  // Period shown: { kind: 'month' } uses viewDate (stepped with ‹ ›); 'last3' / 'last6' end with the
+  // current month; 'custom' has { start, end } as YYYY-MM-DD. Month view always reopens on today.
+  let period = { kind: 'month' };
+  if (ui.period && (['last3', 'last6'].includes(ui.period.kind) ||
+      (ui.period.kind === 'custom' && /^\d{4}-\d{2}-\d{2}$/.test(ui.period.start) && /^\d{4}-\d{2}-\d{2}$/.test(ui.period.end)))) {
+    period = ui.period;
+  }
 
   function loadExpenses() {
     try {
@@ -963,19 +1060,143 @@
     render();
   }
 
+  // ---------- Theme ----------
+  // Saved per device (not synced): 'light' | 'dark', or nothing to follow the phone's setting
+  const THEME_KEY = 'moneyManager.theme.v1';
+
+  function currentTheme() {
+    return document.documentElement.dataset.theme || 'system';
+  }
+
+  function setTheme(theme) {
+    if (theme === 'light' || theme === 'dark') {
+      document.documentElement.dataset.theme = theme;
+      localStorage.setItem(THEME_KEY, theme);
+    } else {
+      delete document.documentElement.dataset.theme;
+      localStorage.removeItem(THEME_KEY);
+    }
+    document.querySelectorAll('#themeToggle button')
+      .forEach(b => b.classList.toggle('active', b.dataset.themeOpt === currentTheme()));
+  }
+
+  document.getElementById('themeToggle').addEventListener('click', ev => {
+    const btn = ev.target.closest('[data-theme-opt]');
+    if (btn) setTheme(btn.dataset.themeOpt);
+  });
+  setTheme(currentTheme());
+
+  function setPeriod(p) {
+    period = p;
+    ui.period = p.kind === 'month' ? null : p;
+    saveUi();
+    render();
+  }
+
+  function shortDate(iso, withYear) {
+    return new Date(iso + 'T00:00:00')
+      .toLocaleDateString('en-IN', withYear ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
+  }
+
+  function rangeText(start, end) {
+    return (start.slice(0, 4) === end.slice(0, 4) ? shortDate(start) : shortDate(start, true)) + ' – ' + shortDate(end, true);
+  }
+
+  // Last day of the month containing d, as YYYY-MM-DD
+  function monthEndISO(d) {
+    return monthKey(d) + '-' + String(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()).padStart(2, '0');
+  }
+
+  // Dates covered by the chosen period, plus the wording the screens need
+  function periodRange() {
+    const now = new Date();
+    if (period.kind === 'month') {
+      const current = monthKey(viewDate) === monthKey(now);
+      return {
+        start: monthKey(viewDate) + '-01',
+        end: monthEndISO(viewDate),
+        title: viewDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
+        dates: '',
+        empty: 'this month',
+        of: 'month',
+        centre: current ? 'this month' : '',
+      };
+    }
+    if (period.kind === 'custom') {
+      return { start: period.start, end: period.end, title: 'Custom range', dates: rangeText(period.start, period.end),
+        empty: 'in this date range', of: 'total', centre: rangeText(period.start, period.end) };
+    }
+    const n = period.kind === 'last6' ? 6 : 3;
+    const start = monthKey(new Date(now.getFullYear(), now.getMonth() - (n - 1), 1)) + '-01';
+    const end = monthEndISO(now);
+    return { start, end, title: `Last ${n} months`, dates: rangeText(start, end),
+      empty: `in the last ${n} months`, of: 'total', centre: `last ${n} months` };
+  }
+
+  function openPeriodPicker() {
+    const now = new Date();
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const monthName = d => d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+    const inMonth = d => period.kind === 'month' && monthKey(viewDate) === monthKey(d);
+    const span = n => rangeText(monthKey(new Date(now.getFullYear(), now.getMonth() - (n - 1), 1)) + '-01', monthEndISO(now));
+    const options = [
+      { id: 'this', label: 'This month', when: monthName(now), active: inMonth(now) },
+      { id: 'last', label: 'Last month', when: monthName(lastMonth), active: inMonth(lastMonth) },
+      { id: 'last3', label: 'Last 3 months', when: span(3), active: period.kind === 'last3' },
+      { id: 'last6', label: 'Last 6 months', when: span(6), active: period.kind === 'last6' },
+    ];
+    document.getElementById('periodList').innerHTML = options.map(o => `
+      <button type="button" class="period-opt${o.active ? ' active' : ''}" data-period="${o.id}">
+        <span>${o.label}</span><span class="when">${o.when}</span>
+      </button>`).join('');
+    // Custom range starts from whatever is on screen now
+    const r = periodRange();
+    document.getElementById('rangeStart').value = r.start;
+    document.getElementById('rangeEnd').value = r.end;
+    openModal('periodModal');
+  }
+
+  document.getElementById('periodList').addEventListener('click', ev => {
+    const btn = ev.target.closest('[data-period]');
+    if (!btn) return;
+    const now = new Date();
+    const id = btn.dataset.period;
+    if (id === 'this' || id === 'last') {
+      viewDate = new Date(now.getFullYear(), now.getMonth() - (id === 'last' ? 1 : 0), 1);
+      setPeriod({ kind: 'month' });
+    } else {
+      setPeriod({ kind: id });
+    }
+    closeModal('periodModal');
+  });
+
+  document.getElementById('customRangeForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    let start = document.getElementById('rangeStart').value;
+    let end = document.getElementById('rangeEnd').value;
+    if (!start || !end) return;
+    if (start > end) [start, end] = [end, start];
+    setPeriod({ kind: 'custom', start, end });
+    closeModal('periodModal');
+  });
+
   function toggleCategory(name) {
     openCategories.has(name) ? openCategories.delete(name) : openCategories.add(name);
     render();
   }
 
   function render() {
-    const key = monthKey(viewDate);
+    const range = periodRange();
     const monthExpenses = expenses
-      .filter(e => e.date.startsWith(key))
+      .filter(e => e.date >= range.start && e.date <= range.end)
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
 
-    document.getElementById('monthLabel').textContent =
-      viewDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    const labelEl = document.getElementById('monthLabel');
+    labelEl.innerHTML = `${escapeHtml(range.title)}<span class="caret">▾</span>` +
+      (range.dates ? `<span class="dates">${escapeHtml(range.dates)}</span>` : '');
+    // ‹ › step through months; other periods are changed from the picker
+    document.getElementById('prevMonth').classList.toggle('nav-hidden', period.kind !== 'month');
+    document.getElementById('nextMonth').classList.toggle('nav-hidden', period.kind !== 'month');
 
     const monthIncome = monthExpenses.filter(e => typeOf(e) === 'income');
     const monthSpend = monthExpenses.filter(e => typeOf(e) === 'expense');
@@ -1009,7 +1230,7 @@
       return;
     }
     if (!monthExpenses.length) {
-      list.innerHTML = '<div class="empty">Nothing added this month.<br>Tap + to add income or an expense.</div>';
+      list.innerHTML = `<div class="empty">Nothing added ${range.empty}.<br>Tap + to add income or an expense.</div>`;
       return;
     }
     const byDay = {};
@@ -1018,8 +1239,9 @@
       const dayIn = sumAmounts(items.filter(e => typeOf(e) === 'income'));
       const dayOut = sumAmounts(items.filter(e => typeOf(e) === 'expense'));
       const dayTotals = [dayIn ? '+' + formatMoney(dayIn) : '', dayOut ? '−' + formatMoney(dayOut) : ''].filter(Boolean).join(' · ');
-      const label = new Date(date + 'T00:00:00')
-        .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+      const opts = { weekday: 'short', day: 'numeric', month: 'short' };
+      if (date.slice(0, 4) !== String(new Date().getFullYear())) opts.year = 'numeric';
+      const label = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', opts);
       return `
         <div class="day-group">
           <div class="day-head"><span>${label}</span><span>${dayTotals}</span></div>
@@ -1163,7 +1385,7 @@
     paintChartSelection();
   }
 
-  // monthExpenses: this month's entries of the chosen type (spending or income)
+  // monthExpenses: entries in the chosen period of the chosen type (spending or income)
   function renderCharts(monthExpenses) {
     const total = sumAmounts(monthExpenses);
     document.querySelectorAll('#chartModeToggle button')
@@ -1172,7 +1394,7 @@
       .forEach(b => b.classList.toggle('active', b.dataset.type === ui.chartType));
     const el = document.getElementById('chartContent');
     if (!monthExpenses.length) {
-      el.innerHTML = `<div class="empty">No ${ui.chartType === 'income' ? 'income' : 'spending'} this month.<br>Tap + to add some.</div>`;
+      el.innerHTML = `<div class="empty">No ${ui.chartType === 'income' ? 'income' : 'spending'} ${periodRange().empty}.<br>Tap + to add some.</div>`;
       return;
     }
     const withSubs = ui.chartMode === 'sub';
@@ -1266,23 +1488,24 @@
 
     // Centre readout: value leads, label follows
     const { cats, total, folded } = chartData;
-    let value = total, label = ui.chartType === 'income' ? 'Total income' : 'Total spent', sub = monthKey(viewDate) === monthKey(new Date()) ? 'this month' : '';
+    const range = periodRange();
+    let value = total, label = ui.chartType === 'income' ? 'Total income' : 'Total spent', sub = range.centre;
     const s = chartSel;
     if (s && s.other) {
       value = cats.filter(c => folded.includes(c.name)).reduce((t, c) => t + c.total, 0);
       label = `Other (${folded.length} categories)`;
-      sub = (value / total * 100).toFixed(1) + '% of month';
+      sub = (value / total * 100).toFixed(1) + '% of ' + range.of;
     } else if (s) {
       const c = cats.find(x => x.name === s.cat);
       if (c && s.sub === undefined) {
         value = c.total;
         label = `${iconFor(c.name)} ${c.name}`;
-        sub = (c.total / total * 100).toFixed(1) + '% of month';
+        sub = (c.total / total * 100).toFixed(1) + '% of ' + range.of;
       } else if (c) {
         const sc = c.subs.find(x => x.sub === s.sub);
         value = sc.total;
         label = `${c.name} › ${sc.name}`;
-        sub = `${(sc.total / c.total * 100).toFixed(0)}% of ${c.name} · ${(sc.total / total * 100).toFixed(1)}% of month`;
+        sub = `${(sc.total / c.total * 100).toFixed(0)}% of ${c.name} · ${(sc.total / total * 100).toFixed(1)}% of ${range.of}`;
       }
     }
     const center = document.getElementById('chartCenter');
@@ -1440,9 +1663,13 @@
       expenses.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), createdAt: Date.now(), ...data });
     }
     saveExpenses();
-    // Jump to the month of the saved expense so it's visible
-    const [y, m] = data.date.split('-').map(Number);
-    viewDate = new Date(y, m - 1, 1);
+    // Make sure the saved entry is on screen: jump to its month unless the chosen period already shows it
+    const range = periodRange();
+    if (period.kind === 'month' || data.date < range.start || data.date > range.end) {
+      const [y, m] = data.date.split('-').map(Number);
+      viewDate = new Date(y, m - 1, 1);
+      if (period.kind !== 'month') setPeriod({ kind: 'month' });
+    }
     closeModal('expenseModal');
     render();
   });
@@ -1938,17 +2165,17 @@
       target: ['.menu-btn'],
       title: 'Menu: start here',
       text: 'Tap ⋮ → Manage categories to create your categories first: expense ones like Food or Rent, ' +
-        'and income ones like Salary. The menu also has GitHub sync, backups, and this guide.',
+        'and income ones like Salary. The menu also has light/dark theme, GitHub sync, backups, and this guide.',
     },
     {
       target: ['.total-sub', '#monthBalance', '.stats'],
-      title: 'Your month at a glance',
-      text: 'Income minus expenses gives your balance for the month.',
+      title: 'Your money at a glance',
+      text: 'Income minus expenses gives your balance for the period you are viewing.',
     },
     {
       target: ['.month-nav'],
-      title: 'Change month',
-      text: 'Use ‹ and › to look at earlier or later months.',
+      title: 'Choose what to see',
+      text: 'Use ‹ and › to step through months. Tap the month name to see last month, the last 3 or 6 months, or pick your own dates.',
     },
     {
       target: ['.tabs'],
