@@ -342,11 +342,60 @@
   /* Category manager */
   .add-row { display: flex; gap: 8px; align-items: center; }
   .add-row input { padding: 10px; }
-  .emoji-input { width: 56px !important; flex-shrink: 0; text-align: center; }
+  .emoji-btn {
+    width: 46px;
+    height: 42px;
+    padding: 0;
+    flex-shrink: 0;
+    font-size: 22px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+    cursor: pointer;
+  }
+  .emoji-btn.small { width: 38px; height: 34px; font-size: 18px; }
+  .emoji-btn[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--text); }
+  .emoji-picker {
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+  }
+  .emoji-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
+  .emoji-tabs::-webkit-scrollbar { display: none; }
+  .emoji-tabs button {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: none;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .emoji-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+  .emoji-grid button {
+    aspect-ratio: 1;
+    padding: 0;
+    font-size: 22px;
+    border: none;
+    border-radius: 10px;
+    background: none;
+    cursor: pointer;
+  }
+  .emoji-grid button.selected { background: var(--bg); box-shadow: 0 0 0 2px var(--accent); }
   .mgr-cat { border-bottom: 1px solid var(--border); padding: 14px 0; }
   .mgr-cat:last-child { border-bottom: none; }
   .mgr-head { display: flex; align-items: center; justify-content: space-between; }
-  .mgr-name { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+  .mgr-name { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .mgr-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .edit-btn { background: none; border: none; padding: 6px; font-size: 15px; flex-shrink: 0; cursor: pointer; }
+  .rename-cat { flex: 1; min-width: 0; margin: 0; }
+  .rename-cat input { width: 100%; padding: 8px 10px; font-size: 16px; font-weight: 600; }
+  .rename-actions { display: flex; gap: 6px; margin-left: 8px; flex-shrink: 0; }
+  .rename-actions .btn.small { padding: 8px 12px; }
   .color-dot {
     width: 34px;
     height: 34px;
@@ -406,6 +455,9 @@
     font-size: 13px;
     padding: 2px 8px;
   }
+  .chip .chip-edit { padding: 2px 2px 2px 6px; font-size: 11px; }
+  .rename-sub { display: flex; align-items: center; flex-basis: 100%; margin: 0; }
+  .rename-sub input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 14px; }
   .no-subs { font-size: 12px; color: var(--muted); margin: 8px 0; }
   .mgr-section {
     margin: 20px 0 0;
@@ -594,15 +646,16 @@
     </div>
     <form id="addCategoryForm" class="add-row">
       <button type="button" id="newCatColor" class="color-dot" data-action="toggle-picker" data-i="new"></button>
-      <input type="text" id="newCatIcon" class="emoji-input" placeholder="📁" maxlength="8" aria-label="Emoji (optional)">
+      <button type="button" id="newCatIcon" class="emoji-btn" data-action="toggle-emoji" data-i="new"></button>
       <input type="text" id="newCatName" placeholder="New category name" required>
       <button type="submit" class="btn primary small">Add</button>
     </form>
     <div id="newCatSwatches"></div>
+    <div id="newCatEmojis"></div>
     <p class="hint">
       Tap the circle to pick one of 20 colours. Subcategories automatically get lighter shades of it.
       Hollow rings are colours already used by another category.
-      The emoji is optional; tap its box and use your keyboard's emoji picker.
+      Tap the emoji box to choose an icon; tap an existing category's icon to change it, or ✏️ to rename a category or subcategory.
     </p>
     <div id="categoryManager"></div>
     <div class="btn-row">
@@ -1810,10 +1863,53 @@
       (used ? `\n\n${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still count under "${cat.name}" in totals.` : '');
     if (!confirm(msg)) return;
     categories.splice(index, 1);
-    openPicker = null; // indices shift
+    openPicker = openEmoji = renamingCat = renamingSub = null; // indices shift
     saveCategories();
     renderCategoryManager();
     render();
+  }
+
+  // Renames a category and moves every entry using it to the new name. Returns false if not renamed.
+  function renameCategory(index, newName) {
+    const cat = categories[index];
+    const oldName = cat.name;
+    newName = (newName || '').trim();
+    if (!newName || newName === oldName || newName === ADD_NEW) return newName === oldName;
+    const clash = findCategory(newName);
+    if (clash && clash !== cat) {
+      alert(`"${clash.name}" already exists as an ${typeOf(clash)} category.`);
+      return false;
+    }
+    const same = e => String(e.category).toLowerCase() === oldName.toLowerCase();
+    cat.name = newName;
+    expenses.forEach(e => { if (same(e)) e.category = newName; });
+    if (openCategories.delete(oldName)) openCategories.add(newName);
+    if (chartSel && chartSel.cat === oldName) chartSel = { ...chartSel, cat: newName };
+    saveCategories();
+    saveExpenses();
+    return true;
+  }
+
+  // Renames a subcategory and moves every entry using it to the new name. Returns false if not renamed.
+  function renameSubcategory(index, subIndex, newName) {
+    const cat = categories[index];
+    const oldName = cat.subs[subIndex];
+    newName = (newName || '').trim();
+    if (!newName || newName === oldName || newName === ADD_NEW) return newName === oldName;
+    const clash = cat.subs.find((s, j) => j !== subIndex && s.toLowerCase() === newName.toLowerCase());
+    if (clash) {
+      alert(`${cat.name} already has a subcategory called "${clash}".`);
+      return false;
+    }
+    const lower = v => String(v || '').toLowerCase();
+    cat.subs[subIndex] = newName;
+    expenses.forEach(e => {
+      if (lower(e.category) === lower(cat.name) && lower(e.subcategory) === lower(oldName)) e.subcategory = newName;
+    });
+    if (chartSel && chartSel.cat === cat.name && chartSel.sub === oldName) chartSel = { ...chartSel, sub: newName };
+    saveCategories();
+    saveExpenses();
+    return true;
   }
 
   function deleteSubcategory(index, subIndex) {
@@ -1831,11 +1927,17 @@
   let newCatColor = null;  // colour chosen for the category being added
   let newCatType = 'expense';
   let openPicker = null;   // whose swatch grid is open: 'new', a category index, or null
+  let newCatIcon = DEFAULT_ICON;
+  let openEmoji = null;    // whose emoji picker is open: 'new', a category index, or null
+  let emojiGroup = 0;      // index into EMOJI_GROUPS of the tab showing
+  let renamingCat = null;  // index of the category whose name is being edited, or null
+  let renamingSub = null;  // { i, j }: category index and subcategory index being edited, or null
 
   function openCategoryManager() {
     newCatColor = nextColor();
     newCatType = 'expense';
-    openPicker = null;
+    newCatIcon = DEFAULT_ICON;
+    openPicker = openEmoji = renamingCat = renamingSub = null;
     renderCategoryManager();
     openModal('categoriesModal');
   }
@@ -1857,12 +1959,46 @@
       </div>`;
   }
 
+  const EMOJI_GROUPS = [
+    ['Food', '🍔', '🍕🍟🌭🥪🌮🍜🍝🍛🍣🍱🥗🍳🥞🍞🥐🍰🍩🍪🍫🍦☕🍵🧃🥤🍺🍷🛒🍎🥦🥛🍗'],
+    ['Play', '🎮', '🎬🍿🎵🎧🎤🎸🎨📚🎲♟️🎳⚽🏏🏸🎾🏀🎯🎟️🎭📺🎪🧩🎁🛝'],
+    ['Home', '🏠', '🏡🛋️🛏️🚿🧹🧺🔌💡🔧🛠️🪴🧽🗑️📦🔑📶💧🔥🧊🪑🚪🧯'],
+    ['Travel', '✈️', '🚗🚕🚌🚆🚇🛵🏍️🚲⛽🅿️🚢🛫🗺️🧳🚖🛺🚦🛣️'],
+    ['Vacation', '🏖️', '🏝️⛱️🏔️⛺🏕️🏨🗽🎢📸🌴🌊🗼🏰🎒🛶🌄🧭🍹'],
+    ['Investment', '📈', '💰💵💳🏦📉💹🪙💎🏧📊🥇💼🤑🏢🧮🔐'],
+    ['Health', '💊', '🏥🩺💉🦷👓🏋️🧘🏃🚴🩹🧴🍏😷❤️🧠🦴'],
+    ['Family', '👪', '👶🍼🧸🎓🏫🐶🐱🐾💐💍🎂🎉👵👴💝🤝👩‍👧‍👦🧒'],
+    ['Misc', '📁', '📌⭐📱💻🖨️✂️👕👗👟👜💄💇🙏📮🧾⚡📝🎗️💸🔖'],
+  ].map(([name, icon, list]) => ({
+    name, icon,
+    // Segmenter splits by visible character, so multi-part emoji like 👩‍👧‍👦 stay whole
+    emojis: [icon, ...Array.from(new Intl.Segmenter().segment(list), x => x.segment)],
+  }));
+
+  // Emoji picker for one owner ('new' or a category index): a row of group tabs over a grid
+  function emojisHtml(owner, current) {
+    const group = EMOJI_GROUPS[emojiGroup];
+    return `<div class="emoji-picker">
+        <div class="emoji-tabs">${EMOJI_GROUPS.map((g, k) => `
+          <button type="button" class="${k === emojiGroup ? 'active' : ''}" data-action="emoji-tab" data-i="${owner}" data-g="${k}">${g.icon} ${g.name}</button>`).join('')}
+        </div>
+        <div class="emoji-grid">${group.emojis.map(e => `
+          <button type="button" class="${e === current ? 'selected' : ''}" data-action="pick-emoji" data-i="${owner}" data-emoji="${e}" aria-label="${e}">${e}</button>`).join('')}
+        </div>
+      </div>`;
+  }
+
   function renderCategoryManager() {
     const dot = document.getElementById('newCatColor');
     dot.style.background = newCatColor;
     dot.setAttribute('aria-label', 'Colour: ' + colorName(newCatColor));
     dot.setAttribute('aria-expanded', String(openPicker === 'new'));
     document.getElementById('newCatSwatches').innerHTML = openPicker === 'new' ? swatchesHtml('new', newCatColor) : '';
+    const iconBtn = document.getElementById('newCatIcon');
+    iconBtn.textContent = newCatIcon;
+    iconBtn.setAttribute('aria-label', 'Icon: ' + newCatIcon);
+    iconBtn.setAttribute('aria-expanded', String(openEmoji === 'new'));
+    document.getElementById('newCatEmojis').innerHTML = openEmoji === 'new' ? emojisHtml('new', newCatIcon) : '';
     document.querySelectorAll('#newCatTypeToggle button')
       .forEach(b => b.classList.toggle('active', b.dataset.type === newCatType));
     document.getElementById('newCatName').placeholder = `New ${newCatType} category`;
@@ -1884,14 +2020,34 @@
           <span class="mgr-name">
             <button type="button" class="color-dot" style="background:${colorFor(c.name)}" data-action="toggle-picker" data-i="${i}"
               aria-expanded="${openPicker === i}" aria-label="Colour for ${escapeHtml(c.name)}: ${colorName(c.color)}"></button>
-            <span>${escapeHtml(c.icon || DEFAULT_ICON)} ${escapeHtml(c.name)}</span>
+            <button type="button" class="emoji-btn small" data-action="toggle-emoji" data-i="${i}"
+              aria-expanded="${openEmoji === i}" aria-label="Icon for ${escapeHtml(c.name)}">${escapeHtml(c.icon || DEFAULT_ICON)}</button>
+            ${renamingCat === i
+              ? `<form class="rename-cat" id="renameCat${i}" data-i="${i}">
+                  <input type="text" value="${escapeHtml(c.name)}" aria-label="New name for ${escapeHtml(c.name)}" required>
+                </form>`
+              : `<span>${escapeHtml(c.name)}</span>
+                <button type="button" class="edit-btn" data-action="rename-cat" data-i="${i}" aria-label="Rename ${escapeHtml(c.name)}">✏️</button>`}
           </span>
-          <button class="icon-btn" data-action="delete-cat" data-i="${i}">🗑 Delete</button>
+          ${renamingCat === i
+            ? `<span class="rename-actions">
+                <button type="submit" form="renameCat${i}" class="btn primary small">Save</button>
+                <button type="button" class="btn secondary small" data-action="cancel-rename" data-i="${i}">Cancel</button>
+              </span>`
+            : `<button class="icon-btn" data-action="delete-cat" data-i="${i}">🗑 Delete</button>`}
         </div>
         ${openPicker === i ? swatchesHtml(i, colorFor(c.name)) : ''}
+        ${openEmoji === i ? emojisHtml(i, c.icon || DEFAULT_ICON) : ''}
         ${c.subs.length
-          ? `<div class="chips">${c.subs.map((s, j) => `
-              <span class="chip"><span class="dot" style="background:${subColorFor(c.name, s)}"></span>${escapeHtml(s)}<button data-action="delete-sub" data-i="${i}" data-j="${j}" aria-label="Remove">✕</button></span>`).join('')}
+          ? `<div class="chips">${c.subs.map((s, j) => renamingSub && renamingSub.i === i && renamingSub.j === j ? `
+              <form class="rename-sub" data-i="${i}" data-j="${j}">
+                <input type="text" value="${escapeHtml(s)}" aria-label="New name for ${escapeHtml(s)}" required>
+                <span class="rename-actions">
+                  <button type="submit" class="btn primary small">Save</button>
+                  <button type="button" class="btn secondary small" data-action="cancel-rename" data-i="${i}">Cancel</button>
+                </span>
+              </form>` : `
+              <span class="chip"><span class="dot" style="background:${subColorFor(c.name, s)}"></span>${escapeHtml(s)}<button class="chip-edit" data-action="rename-sub" data-i="${i}" data-j="${j}" aria-label="Rename ${escapeHtml(s)}">✏️</button><button data-action="delete-sub" data-i="${i}" data-j="${j}" aria-label="Remove">✕</button></span>`).join('')}
             </div>`
           : '<div class="no-subs">No subcategories</div>'}
         <form class="add-row add-sub" data-i="${i}">
@@ -1904,17 +2060,16 @@
   document.getElementById('addCategoryForm').addEventListener('submit', ev => {
     ev.preventDefault();
     const nameInput = document.getElementById('newCatName');
-    const iconInput = document.getElementById('newCatIcon');
     const existing = findCategory(nameInput.value.trim());
     if (existing) {
       alert(`"${existing.name}" already exists as an ${typeOf(existing)} category.`);
       return;
     }
-    if (addCategory(nameInput.value, iconInput.value, newCatColor, newCatType)) {
+    if (addCategory(nameInput.value, newCatIcon, newCatColor, newCatType)) {
       nameInput.value = '';
-      iconInput.value = '';
+      newCatIcon = DEFAULT_ICON;
       newCatColor = nextColor();
-      openPicker = null;
+      openPicker = openEmoji = null;
       renderCategoryManager();
       render();
     }
@@ -1936,8 +2091,59 @@
     const action = btn.dataset.action;
     if (action === 'delete-cat') deleteCategory(owner);
     if (action === 'delete-sub') deleteSubcategory(owner, Number(btn.dataset.j));
+    if (action === 'rename-cat') {
+      renamingCat = owner;
+      openPicker = openEmoji = renamingSub = null;
+      renderCategoryManager();
+      const input = document.querySelector(`#renameCat${owner} input`);
+      input.focus();
+      input.select();
+    }
+    if (action === 'rename-sub') {
+      renamingSub = { i: owner, j: Number(btn.dataset.j) };
+      openPicker = openEmoji = renamingCat = null;
+      renderCategoryManager();
+      const input = document.querySelector(`.rename-sub[data-i="${owner}"][data-j="${btn.dataset.j}"] input`);
+      input.focus();
+      input.select();
+    }
+    if (action === 'cancel-rename') {
+      renamingCat = renamingSub = null;
+      renderCategoryManager();
+    }
     if (action === 'toggle-picker') {
       openPicker = openPicker === owner ? null : owner;
+      openEmoji = null;
+      renderCategoryManager();
+    }
+    if (action === 'toggle-emoji') {
+      openEmoji = openEmoji === owner ? null : owner;
+      openPicker = null;
+      // Start on the tab holding the current icon (Food for a new category with the default icon)
+      const current = owner === 'new' ? newCatIcon : categories[owner].icon;
+      const k = current === DEFAULT_ICON && owner === 'new' ? 0 : EMOJI_GROUPS.findIndex(g => g.emojis.includes(current));
+      emojiGroup = k < 0 ? 0 : k;
+      renderCategoryManager();
+      const tabs = document.querySelector('.emoji-tabs'), active = tabs && tabs.querySelector('.active');
+      if (active) tabs.scrollLeft = active.offsetLeft - tabs.offsetLeft - 8;
+    }
+    if (action === 'emoji-tab') {
+      const tabs = btn.parentElement, scroll = tabs.scrollLeft;
+      emojiGroup = Number(btn.dataset.g);
+      renderCategoryManager();
+      // Re-rendering resets the tab strip's scroll; keep it where the user left it
+      const again = document.querySelector('.emoji-tabs');
+      if (again) again.scrollLeft = scroll;
+    }
+    if (action === 'pick-emoji') {
+      if (owner === 'new') {
+        newCatIcon = btn.dataset.emoji;
+      } else {
+        categories[owner].icon = btn.dataset.emoji;
+        saveCategories();
+        render();
+      }
+      openEmoji = null;
       renderCategoryManager();
     }
     if (action === 'pick-color') {
@@ -1954,6 +2160,26 @@
   });
 
   document.getElementById('categoryManager').addEventListener('submit', ev => {
+    const rename = ev.target.closest('.rename-cat');
+    if (rename) {
+      ev.preventDefault();
+      if (renameCategory(Number(rename.dataset.i), rename.querySelector('input').value)) {
+        renamingCat = null;
+        renderCategoryManager();
+        render();
+      }
+      return;
+    }
+    const renameSub = ev.target.closest('.rename-sub');
+    if (renameSub) {
+      ev.preventDefault();
+      if (renameSubcategory(Number(renameSub.dataset.i), Number(renameSub.dataset.j), renameSub.querySelector('input').value)) {
+        renamingSub = null;
+        renderCategoryManager();
+        render();
+      }
+      return;
+    }
     const form = ev.target.closest('.add-sub');
     if (!form) return;
     ev.preventDefault();
