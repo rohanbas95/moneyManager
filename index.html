@@ -218,6 +218,34 @@
   .expense .info .cat { font-size: 12px; color: var(--muted); }
   .expense .amount { font-weight: 600; margin-left: 8px; font-variant-numeric: tabular-nums; }
   .expense .amount.income { color: var(--income); }
+  .search {
+    position: relative;
+    margin-bottom: 16px;
+  }
+  .search input {
+    padding: 12px 40px 12px 38px;
+    background: var(--card);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .search input::-webkit-search-cancel-button { display: none; }
+  .search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); font-size: 15px; pointer-events: none; opacity: 0.6; }
+  .search-clear {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .search-summary { display: flex; justify-content: space-between; margin: -6px 4px 12px; font-size: 13px; color: var(--muted); }
+  .expense mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; border-radius: 3px; }
   .empty { text-align: center; color: var(--muted); padding: 40px 0; line-height: 1.6; }
   .empty .btn { margin-top: 16px; flex: none; padding: 12px 24px; }
   .fab {
@@ -582,6 +610,13 @@
 
 <main>
   <section id="expensesView">
+    <div class="search">
+      <span class="search-icon">🔍</span>
+      <input type="search" id="searchInput" placeholder="Search amount, category, note…" enterkeyhint="search"
+        autocomplete="off" aria-label="Search transactions in this period">
+      <button type="button" class="search-clear" id="searchClear" hidden aria-label="Clear search">✕</button>
+    </div>
+    <div class="search-summary" id="searchSummary" hidden></div>
     <div class="card" id="incomeCard">
       <h2>Income by category</h2>
       <div id="incomeBreakdown"></div>
@@ -1241,6 +1276,29 @@
     render();
   }
 
+  // Search within the period shown. Every word typed must appear somewhere in the entry's amount,
+  // category, subcategory or note (so "food 200" finds food entries with 200 in the amount).
+  let searchQuery = '';
+
+  function searchWords() {
+    return searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+  }
+
+  function matchesSearch(e, words) {
+    const amount = String(e.amount);
+    const text = [amount, amount.replace(/\.0+$/, ''), Number(e.amount).toLocaleString('en-IN'),
+      e.category, e.subcategory, e.note].join(' ').toLowerCase();
+    return words.every(w => text.includes(w.replace(/^₹/, '')));
+  }
+
+  // Escaped text with the searched words wrapped in <mark>
+  function highlight(text) {
+    const words = searchWords().map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (!words.length || !text) return escapeHtml(text);
+    return String(text).split(new RegExp(`(${words.join('|')})`, 'gi'))
+      .map((part, k) => k % 2 ? `<mark>${escapeHtml(part)}</mark>` : escapeHtml(part)).join('');
+  }
+
   function render() {
     const range = periodRange();
     const monthExpenses = expenses
@@ -1275,6 +1333,21 @@
     renderBreakdown('incomeCard', 'incomeBreakdown', monthIncome);
     renderBreakdown('expenseCard', 'expenseBreakdown', monthSpend);
 
+    // While searching, results replace the category summaries at the top
+    const words = searchWords();
+    const shown = words.length ? monthExpenses.filter(e => matchesSearch(e, words)) : monthExpenses;
+    document.getElementById('searchClear').hidden = !searchQuery;
+    const summary = document.getElementById('searchSummary');
+    summary.hidden = !words.length || !shown.length;
+    if (words.length) {
+      document.getElementById('incomeCard').style.display = 'none';
+      document.getElementById('expenseCard').style.display = 'none';
+      const inSum = sumAmounts(shown.filter(e => typeOf(e) === 'income'));
+      const outSum = sumAmounts(shown.filter(e => typeOf(e) === 'expense'));
+      summary.innerHTML = `<span>${shown.length} result${shown.length === 1 ? '' : 's'}</span><span>` +
+        [inSum ? '+' + formatMoney(inSum) : '', outSum ? '−' + formatMoney(outSum) : ''].filter(Boolean).join(' · ') + '</span>';
+    }
+
     // Transaction list, grouped by day
     const list = document.getElementById('expenseList');
     if (!categories.length && !expenses.length) {
@@ -1289,8 +1362,12 @@
       list.innerHTML = `<div class="empty">Nothing added ${range.empty}.<br>Tap + to add income or an expense.</div>`;
       return;
     }
+    if (!shown.length) {
+      list.innerHTML = `<div class="empty">No transactions match “${escapeHtml(searchQuery.trim())}” ${range.empty}.</div>`;
+      return;
+    }
     const byDay = {};
-    monthExpenses.forEach(e => { (byDay[e.date] = byDay[e.date] || []).push(e); });
+    shown.forEach(e => { (byDay[e.date] = byDay[e.date] || []).push(e); });
     list.innerHTML = Object.entries(byDay).map(([date, items]) => {
       const dayIn = sumAmounts(items.filter(e => typeOf(e) === 'income'));
       const dayOut = sumAmounts(items.filter(e => typeOf(e) === 'expense'));
@@ -1305,8 +1382,8 @@
             <div class="expense" style="${rowStyle(e.category, e.subcategory)}" onclick="openEdit('${e.id}')">
               <div class="icon">${escapeHtml(iconFor(e.category))}</div>
               <div class="info">
-                <div class="title">${escapeHtml(e.note || e.subcategory || e.category)}</div>
-                <div class="cat">${escapeHtml(e.category)}${e.subcategory ? ' › ' + escapeHtml(e.subcategory) : ''}</div>
+                <div class="title">${highlight(e.note || e.subcategory || e.category)}</div>
+                <div class="cat">${highlight(e.category)}${e.subcategory ? ' › ' + highlight(e.subcategory) : ''}</div>
               </div>
               ${typeOf(e) === 'income'
                 ? `<div class="amount income">+${formatMoney(e.amount)}</div>`
@@ -1350,6 +1427,18 @@
         </div>`;
     }).join('');
   }
+
+  const searchInput = document.getElementById('searchInput');
+  searchInput.addEventListener('input', () => { searchQuery = searchInput.value; render(); });
+  searchInput.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape') { searchInput.value = searchQuery = ''; render(); }
+    if (ev.key === 'Enter') searchInput.blur(); // hides the phone keyboard to show the results
+  });
+  document.getElementById('searchClear').addEventListener('click', () => {
+    searchInput.value = searchQuery = '';
+    render();
+    searchInput.focus();
+  });
 
   document.getElementById('expensesView').addEventListener('click', ev => {
     const row = ev.target.closest('[data-cat]');
