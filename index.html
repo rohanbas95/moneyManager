@@ -378,6 +378,10 @@
   .setup-steps li { margin-bottom: 4px; }
   .sync-status { font-size: 13px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
   .sync-status.error { color: var(--danger); }
+  .sync-google { padding-bottom: 14px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .sync-google .custom-title { margin-top: 4px; }
+  .sync-google .btn:disabled { opacity: 0.5; }
+  .sync-github > summary { font-size: 15px; }
 
   /* First-run guide: a spotlight "hole" over the current control plus a tip card */
   .guide { position: fixed; inset: 0; z-index: 30; }
@@ -644,7 +648,7 @@
 
 <header>
   <h1>💰 Money Manager</h1>
-  <button class="sync-pill" id="syncPill" hidden onclick="openSyncSetup()"></button>
+  <button class="sync-pill" id="syncPill" hidden onclick="syncPillClick()"></button>
   <button class="menu-btn" onclick="openModal('settingsModal')">⋮</button>
   <div class="month-nav">
     <button id="prevMonth" onclick="changeMonth(-1)" aria-label="Previous month">‹</button>
@@ -773,13 +777,25 @@
   </div>
 </div>
 
-<!-- GitHub sync -->
+<!-- Sync (Google Drive or GitHub) -->
 <div class="modal-bg" id="syncModal" onclick="if (event.target === this) closeModal('syncModal')">
   <div class="modal">
-    <h3>Sync with GitHub</h3>
+    <h3>Sync</h3>
     <p class="hint" style="margin-top:0">
-      Keeps your phone, laptop and other devices in step using one file in your own private GitHub
-      repository. Without it, everything stays in this browser only.
+      Keeps your phone, laptop and other devices in step. Without it, everything stays in this browser only.
+    </p>
+    <div class="sync-google">
+      <h4 class="custom-title">Google Drive</h4>
+      <p class="hint" id="googleSyncInfo" style="margin-top:6px"></p>
+      <div class="btn-row">
+        <button type="button" class="btn primary" id="googleSignInBtn" onclick="googleSignIn()">Sign in with Google</button>
+        <button type="button" class="btn secondary" id="googleSyncNow" onclick="syncNow()">Sync now</button>
+      </div>
+    </div>
+    <details class="setup-steps sync-github" id="githubSection">
+    <summary>Or use GitHub instead</summary>
+    <p class="hint" style="margin-top:6px">
+      Uses one file in your own private GitHub repository.
     </p>
     <details class="setup-steps">
       <summary>How to set it up (one time, about 5 minutes)</summary>
@@ -804,13 +820,16 @@
       <input type="password" id="syncToken" autocomplete="off" spellcheck="false">
       <label for="syncPath">File name in the repository</label>
       <input type="text" id="syncPath" required autocapitalize="off" autocorrect="off" spellcheck="false">
-      <div class="sync-status" id="syncStatusText"></div>
       <div class="btn-row">
-        <button type="button" class="btn danger" id="syncDisconnect">Turn off</button>
-        <button type="button" class="btn secondary" onclick="closeModal('syncModal')">Close</button>
-        <button type="submit" class="btn primary">Save &amp; sync</button>
+        <button type="submit" class="btn primary">Save &amp; sync with GitHub</button>
       </div>
     </form>
+    </details>
+    <div class="sync-status" id="syncStatusText"></div>
+    <div class="btn-row">
+      <button type="button" class="btn danger" id="syncDisconnect">Turn off sync</button>
+      <button type="button" class="btn secondary" onclick="closeModal('syncModal')">Close</button>
+    </div>
   </div>
 </div>
 
@@ -860,7 +879,7 @@
       <button class="btn primary" onclick="closeModal('settingsModal'); openCategoryManager()">Manage categories</button>
     </div>
     <div class="btn-row">
-      <button class="btn secondary" onclick="closeModal('settingsModal'); openSyncSetup()">☁️ Sync with GitHub</button>
+      <button class="btn secondary" onclick="closeModal('settingsModal'); openSyncSetup()">☁️ Sync (Google Drive or GitHub)</button>
     </div>
     <div class="btn-row">
       <button class="btn secondary" onclick="closeModal('settingsModal'); startGuide()">❓ Show guide</button>
@@ -872,7 +891,7 @@
     <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importData(event)">
     <p class="hint">
       Your data lives in this browser on this device. If you clear the browser's data without
-      GitHub sync turned on, your income and expenses are deleted too, so export a backup now and then.
+      sync turned on, your income and expenses are deleted too, so export a backup now and then.
     </p>
     <div class="btn-row">
       <button class="btn secondary" onclick="closeModal('settingsModal')">Close</button>
@@ -947,7 +966,9 @@
   let savedCategories = new Map(); // lowercase name -> category as last saved
 
   const SYNC_KEY = 'moneyManager.sync.v1';
-  let syncConfig = null; // { owner, repo, token, path, lastSync } when GitHub sync is on
+  // When sync is on: GitHub { provider: 'github', owner, repo, token, path, lastSync }
+  // or Google Drive { provider: 'google', email, token, tokenExpiry, lastSync }. Saved per device.
+  let syncConfig = null;
   try { syncConfig = JSON.parse(localStorage.getItem(SYNC_KEY)); } catch {}
   let syncTimer = null;
   let syncing = false;
@@ -2853,9 +2874,10 @@
     reader.readAsText(file);
   }
 
-  // ---------- GitHub sync ----------
+  // ---------- Sync (Google Drive or GitHub) ----------
   // Optional. The browser's storage stays the main copy; when sync is set up, this device merges
-  // its data with one JSON file in the user's private GitHub repo and writes the result back.
+  // its data with one JSON file (in a hidden app folder in the user's Google Drive, or in their
+  // private GitHub repo) and writes the result back.
   // Per entry/category the newer change wins, and anything deleted after its last change is dropped.
 
   function scheduleSync(delay = 2000) {
@@ -2915,13 +2937,15 @@
     syncing = true;
     syncAgain = false;
     setSyncStatus('syncing');
+    const google = syncConfig.provider === 'google';
     try {
       for (let attempt = 0; ; attempt++) {
-        const remote = await githubRead();
+        const remote = google ? await driveRead() : await githubRead();
         const text = JSON.stringify(applyRemote(remote && remote.data), null, 1);
         if (remote && text === remote.text) break; // already up to date
         try {
-          await githubWrite(text, remote && remote.sha);
+          if (google) await driveWrite(text, remote);
+          else await githubWrite(text, remote && remote.sha);
           break;
         } catch (err) {
           // Another device wrote in between: read again and re-merge
@@ -2933,7 +2957,7 @@
       localStorage.setItem(SYNC_KEY, JSON.stringify(syncConfig));
       setSyncStatus('ok');
     } catch (err) {
-      setSyncStatus(err.offline ? 'offline' : 'error', err.message);
+      setSyncStatus(err.offline ? 'offline' : err.signIn ? 'signin' : 'error', err.message);
     } finally {
       syncing = false;
       if (syncAgain) scheduleSync(300);
@@ -3019,7 +3043,7 @@
     syncState = { state, message };
     const pill = document.getElementById('syncPill');
     pill.hidden = !syncConfig;
-    pill.textContent = { syncing: '⟳ Syncing…', ok: '☁️ Synced', offline: '☁️ Offline', error: '⚠️ Sync error' }[state];
+    pill.textContent = { syncing: '⟳ Syncing…', ok: '☁️ Synced', offline: '☁️ Offline', error: '⚠️ Sync error', signin: '🔑 Tap to sync' }[state];
     pill.title = message || pill.textContent;
     const text = document.getElementById('syncStatusText');
     text.classList.toggle('error', state === 'error');
@@ -3029,10 +3053,17 @@
     else text.textContent = syncConfig.lastSync
       ? 'Last synced ' + new Date(syncConfig.lastSync).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
       : 'Not synced yet.';
+    renderGoogleSync();
+  }
+
+  // Signed out of Google: the tap itself opens Google's sign-in (browsers only allow its pop-up on a tap)
+  function syncPillClick() {
+    if (syncState.state === 'signin' && googleClient) googleSignIn();
+    else openSyncSetup();
   }
 
   function openSyncSetup() {
-    const c = syncConfig || {};
+    const c = syncConfig && syncConfig.provider !== 'google' ? syncConfig : {};
     document.getElementById('syncOwner').value = c.owner || '';
     document.getElementById('syncRepo').value = c.repo || '';
     const token = document.getElementById('syncToken');
@@ -3041,7 +3072,9 @@
     token.placeholder = c.token ? 'Saved (leave empty to keep it)' : 'github_pat_…';
     document.getElementById('syncPath').value = c.path || 'money-manager.json';
     document.getElementById('syncDisconnect').hidden = !syncConfig;
+    document.getElementById('githubSection').open = !!syncConfig && syncConfig.provider !== 'google';
     setSyncStatus(syncState.state, syncState.message);
+    loadGoogle().catch(() => {}); // ready for the sign-in tap
     openModal('syncModal');
   }
 
@@ -3050,24 +3083,190 @@
     let owner = document.getElementById('syncOwner').value.trim();
     let repo = document.getElementById('syncRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
     if (repo.includes('/')) [owner, repo] = repo.split('/'); // pasted "owner/repo" or a repo URL
-    const token = document.getElementById('syncToken').value.trim() || (syncConfig && syncConfig.token);
+    const onGithub = syncConfig && syncConfig.provider !== 'google';
+    const token = document.getElementById('syncToken').value.trim() || (onGithub && syncConfig.token);
     const path = document.getElementById('syncPath').value.trim().replace(/^\/+/, '') || 'money-manager.json';
     if (!owner || !repo || !token) return;
-    const sameTarget = syncConfig && syncConfig.owner === owner && syncConfig.repo === repo && syncConfig.path === path;
-    syncConfig = { owner, repo, token, path, lastSync: sameTarget ? syncConfig.lastSync : null };
+    const sameTarget = onGithub && syncConfig.owner === owner && syncConfig.repo === repo && syncConfig.path === path;
+    syncConfig = { provider: 'github', owner, repo, token, path, lastSync: sameTarget ? syncConfig.lastSync : null };
     localStorage.setItem(SYNC_KEY, JSON.stringify(syncConfig));
     document.getElementById('syncDisconnect').hidden = false;
     await syncNow();
   });
 
   document.getElementById('syncDisconnect').addEventListener('click', () => {
-    if (!confirm('Turn off sync on this device?\n\nYour data stays in this browser, and the copy on GitHub is not deleted.')) return;
+    const where = syncConfig.provider === 'google' ? 'in your Google Drive' : 'on GitHub';
+    if (!confirm(`Turn off sync on this device?\n\nYour data stays in this browser, and the copy ${where} is not deleted.`)) return;
     syncConfig = null;
     clearTimeout(syncTimer);
     localStorage.removeItem(SYNC_KEY);
     setSyncStatus('ok');
     closeModal('syncModal');
   });
+
+  // ---------- Google Drive ----------
+  // Sign-in uses Google's own library in the browser (no server). It hands out an access token that
+  // lasts about an hour; after that the ☁️ button asks for a tap to sign in again, as browsers only
+  // allow Google's sign-in window to open on a tap. Data goes to Drive's hidden app folder, which only
+  // this app can see. To enable it, create a Web OAuth client in Google Cloud Console and paste its ID here.
+  const GOOGLE_CLIENT_ID = '732150426782-hnhcitluu47ilcadctl8slpnksihlot5.apps.googleusercontent.com';
+  const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+  const DRIVE_API = 'https://www.googleapis.com/drive/v3';
+  const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+  const DRIVE_FILE = 'money-manager.json';
+  let googleClient = null;
+  let googleLoading = null;
+
+  function loadGoogle() {
+    if (!GOOGLE_CLIENT_ID) return Promise.reject(new Error('Google sign-in is not set up.'));
+    return googleLoading || (googleLoading = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.onload = () => {
+        googleClient = google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: GOOGLE_SCOPE + ' email',
+          callback: onGoogleToken,
+          error_callback: onGoogleError,
+        });
+        renderGoogleSync();
+        resolve();
+      };
+      script.onerror = () => {
+        googleLoading = null;
+        script.remove();
+        reject(new Error('Could not load Google sign-in. Check your internet connection.'));
+      };
+      document.head.appendChild(script);
+    }));
+  }
+
+  // Must run straight from a tap, or the browser blocks Google's window
+  function googleSignIn() {
+    if (!googleClient) {
+      loadGoogle().then(() => setSyncStatus(syncState.state, 'Google sign-in is ready. Tap "Sign in with Google" again.'),
+        err => setSyncStatus('error', err.message));
+      return;
+    }
+    const known = syncConfig && syncConfig.provider === 'google' && syncConfig.email;
+    googleClient.requestAccessToken(known ? { prompt: '', login_hint: syncConfig.email } : { prompt: 'select_account' });
+  }
+
+  async function onGoogleToken(resp) {
+    if (resp.error) return setSyncStatus('error', `Google sign-in failed (${resp.error}).`);
+    if (!google.accounts.oauth2.hasGrantedAllScopes(resp, GOOGLE_SCOPE)) {
+      return setSyncStatus('error', 'Google sign-in needs the "See, create and delete its own configuration data in your Google Drive" permission. Sign in again and tick it.');
+    }
+    const wasGoogle = syncConfig && syncConfig.provider === 'google';
+    let email = '';
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${resp.access_token}` } });
+      if (res.ok) email = (await res.json()).email || '';
+    } catch {}
+    const sameAccount = wasGoogle && (!email || !syncConfig.email || email === syncConfig.email);
+    syncConfig = {
+      provider: 'google',
+      email: email || (sameAccount ? syncConfig.email : ''),
+      token: resp.access_token,
+      tokenExpiry: Date.now() + (Number(resp.expires_in) || 3600) * 1000,
+      lastSync: sameAccount ? syncConfig.lastSync : null,
+    };
+    localStorage.setItem(SYNC_KEY, JSON.stringify(syncConfig));
+    document.getElementById('syncDisconnect').hidden = false;
+    document.getElementById('githubSection').open = false;
+    await syncNow();
+  }
+
+  function onGoogleError(err) {
+    const messages = {
+      popup_closed: 'Google sign-in was closed before it finished.',
+      popup_failed_to_open: 'Your browser blocked the Google sign-in window. Allow pop-ups for this site and try again.',
+    };
+    setSyncStatus(syncConfig && syncConfig.provider === 'google' ? 'signin' : 'ok', messages[err && err.type] || 'Google sign-in did not finish.');
+  }
+
+  function googleTokenValid() {
+    return !!(syncConfig && syncConfig.token && syncConfig.tokenExpiry - 60000 > Date.now());
+  }
+
+  function signInNeeded() {
+    return Object.assign(new Error('Signed out of Google. Tap 🔑 or "Sign in with Google" to sync. Your data is safe on this device meanwhile.'), { signIn: true });
+  }
+
+  async function driveFetch(url, opts = {}) {
+    if (!googleTokenValid()) throw signInNeeded();
+    let res;
+    try {
+      res = await fetch(url, { ...opts, cache: 'no-store', headers: { Authorization: `Bearer ${syncConfig.token}`, ...opts.headers } });
+    } catch {
+      throw Object.assign(new Error('No internet connection. Will sync when you are back online.'), { offline: true });
+    }
+    if (res.status === 401) {
+      syncConfig.token = null;
+      localStorage.setItem(SYNC_KEY, JSON.stringify(syncConfig));
+      throw signInNeeded();
+    }
+    if (res.status === 403) throw Object.assign(new Error('Google Drive refused access. Check that the Google Drive API is turned on for this app in Google Cloud Console.'), { status: 403 });
+    if (!res.ok) throw Object.assign(new Error(`Google Drive error ${res.status}.`), { status: res.status });
+    return res;
+  }
+
+  // Returns { text, data, id } or null if there's no file yet. If two devices both created the file
+  // at the same moment there can be two: the oldest is kept and the other's data merged in.
+  async function driveRead() {
+    const q = encodeURIComponent(`name='${DRIVE_FILE}' and trashed=false`);
+    const { files = [] } = await (await driveFetch(`${DRIVE_API}/files?spaces=appDataFolder&orderBy=createdTime&fields=files(id)&q=${q}`)).json();
+    if (!files.length) return null;
+    const read = async id => {
+      const text = await (await driveFetch(`${DRIVE_API}/files/${id}?alt=media`)).text();
+      try {
+        return { text, data: JSON.parse(text), id };
+      } catch {
+        throw new Error(`"${DRIVE_FILE}" in your Google Drive is not Money Manager data.`);
+      }
+    };
+    const [main, ...extras] = await Promise.all(files.map(f => read(f.id)));
+    for (const extra of extras) {
+      applyRemote(extra.data);
+      await driveFetch(`${DRIVE_API}/files/${extra.id}`, { method: 'DELETE' });
+    }
+    return main;
+  }
+
+  // Drive has no "only if unchanged" write, but it doesn't need one: if another device writes in
+  // between, its changes are still on that device and its next sync merges them back in.
+  async function driveWrite(text, remote) {
+    if (remote) {
+      await driveFetch(`${DRIVE_UPLOAD}/files/${remote.id}?uploadType=media`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: text,
+      });
+      return;
+    }
+    const boundary = 'mm' + Date.now();
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+      JSON.stringify({ name: DRIVE_FILE, parents: ['appDataFolder'] }) +
+      `\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${text}\r\n--${boundary}--`;
+    await driveFetch(`${DRIVE_UPLOAD}/files?uploadType=multipart`, {
+      method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body,
+    });
+  }
+
+  function renderGoogleSync() {
+    const info = document.getElementById('googleSyncInfo');
+    const signIn = document.getElementById('googleSignInBtn');
+    const now = document.getElementById('googleSyncNow');
+    const on = !!syncConfig && syncConfig.provider === 'google';
+    signIn.disabled = !GOOGLE_CLIENT_ID;
+    now.hidden = !on || !googleTokenValid();
+    signIn.hidden = on && googleTokenValid();
+    signIn.textContent = on ? 'Sign in again' : 'Sign in with Google';
+    if (!GOOGLE_CLIENT_ID) info.textContent = 'Google sign-in is not set up in this copy of the app yet.';
+    else if (on) info.textContent = `Signed in${syncConfig.email ? ' as ' + syncConfig.email : ''}. ` +
+      'Your data is saved in a hidden app folder in your Google Drive that only this app can see.';
+    else info.textContent = 'Sign in and your data is saved in a hidden app folder in your own Google Drive that only this app can see.' +
+      (syncConfig ? ' This replaces GitHub sync on this device.' : '');
+  }
 
   // Pick up changes from other devices when the app is opened or brought back, and push
   // pending changes right away when it's put in the background
@@ -3091,7 +3290,7 @@
       target: ['.menu-btn'],
       title: 'Menu: start here',
       text: 'Tap ⋮ → Manage categories to create your categories first: expense ones like Food or Rent, ' +
-        'and income ones like Salary. The menu also has light/dark theme, GitHub sync, backups, and this guide.',
+        'and income ones like Salary. The menu also has light/dark theme, sync with Google Drive or GitHub, backups, and this guide.',
     },
     {
       target: ['.total-sub', '#monthBalance', '.stats'],
@@ -3194,6 +3393,7 @@
   render();
   setSyncStatus(syncConfig && syncConfig.lastSync ? 'ok' : 'syncing');
   syncNow();
+  if (syncConfig && syncConfig.provider === 'google') loadGoogle().catch(() => {}); // ready for a sign-in tap
   // Only for someone genuinely new: never seen the guide and nothing added yet
   if (!localStorage.getItem(GUIDE_KEY) && !expenses.length && !categories.length) startGuide();
 
