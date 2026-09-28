@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy – Money Manager</title>
+<meta name="theme-color" content="#0f766e">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --accent: #0f766e;
+    --border: #e5e7eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #111827;
+      --card: #1f2937;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --border: #374151;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header { background: var(--accent); color: #fff; padding: 28px 20px 24px; }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; opacity: 0.85; font-size: 14px; }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 4px 20px 12px; margin-bottom: 14px; }
+  h2 { font-size: 17px; margin: 16px 0 6px; }
+  p, li { font-size: 15px; }
+  ul { padding-left: 20px; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .back { display: inline-block; margin: 6px 0 18px; font-weight: 600; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💰 Money Manager: Privacy Policy</h1>
+  <p>Last updated: 28 September 2026</p>
+</header>
+
+<main>
+  <a class="back" href="./">‹ Back to the app</a>
+
+  <section>
+    <h2>In short</h2>
+    <p>
+      Money Manager is a personal expense tracker that runs entirely in your browser. There is no
+      Money Manager server. Your income, expenses and categories are never sent to the developer,
+      and there are no ads, analytics or trackers.
+    </p>
+  </section>
+
+  <section>
+    <h2>What is stored and where</h2>
+    <ul>
+      <li><b>On your device.</b> Everything you enter (amounts, dates, notes, categories) and your
+        settings are saved in your browser's local storage on that device.</li>
+      <li><b>In your own Google Drive (optional).</b> If you turn on Google Drive sync, a copy of your
+        data is saved as one file in a hidden app folder in <i>your</i> Google Drive, so your
+        devices can stay in step. Only this app can see that folder; it doesn't show in your Drive
+        files, and the developer has no access to it.</li>
+      <li><b>In your own GitHub repository (optional).</b> If you turn on GitHub sync instead, a copy
+        is saved as a file in the GitHub repository you choose, using an access token you create.
+        The token is saved only in your browser.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Google account data</h2>
+    <p>When you sign in with Google, the app asks for two permissions:</p>
+    <ul>
+      <li><b>Its own app data in your Google Drive</b> (<code>drive.appdata</code>), to read and write
+        the one file that holds your Money Manager data. It cannot see or change any of your other
+        Drive files.</li>
+      <li><b>Your email address</b>, only to show which account you're signed in with on the Sync
+        screen.</li>
+    </ul>
+    <p>
+      The sign-in token Google gives the app is kept in your browser and expires after about an hour.
+      Your Google data is used only to provide sync for you. It is not sold, shared, used for ads or
+      used to train AI models, and no person reads it.
+    </p>
+    <p>
+      Money Manager's use of information received from Google APIs adheres to the
+      <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API
+      Services User Data Policy</a>, including the Limited Use requirements.
+    </p>
+  </section>
+
+  <section>
+    <h2>Other services</h2>
+    <p>
+      The app itself is hosted on GitHub Pages. When sync is on, your browser talks directly to Google
+      (sign-in and Drive) or GitHub; their own privacy policies apply to those services. The app
+      doesn't use cookies of its own.
+    </p>
+  </section>
+
+  <section>
+    <h2>Deleting your data</h2>
+    <ul>
+      <li><b>From a device:</b> clear this site's data in your browser settings. Export a backup first
+        from the app's menu if you want to keep it.</li>
+      <li><b>From Google Drive:</b> open Google Drive on a computer → Settings ⚙️ → <b>Manage apps</b> →
+        Money Manager → <b>Options</b> → <b>Delete hidden app data</b>.</li>
+      <li><b>Remove the app's access to your Google account:</b> go to
+        <a href="https://myaccount.google.com/connections" target="_blank" rel="noopener">myaccount.google.com/connections</a>
+        and remove Money Manager.</li>
+      <li><b>From GitHub:</b> delete the file or repository you chose, and delete the access token.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Children</h2>
+    <p>Money Manager is not directed at children under 13.</p>
+  </section>
+
+  <section>
+    <h2>Changes and contact</h2>
+    <p>
+      If this policy changes, the new version will be posted on this page with a new date.
+      Questions? Email <a href="mailto:r.basankarr@gmail.com">r.basankarr@gmail.com</a>.
+    </p>
+  </section>
+
+  <p class="muted">Money Manager · a personal project</p>
+</main>
+
+</body>
+</html>
