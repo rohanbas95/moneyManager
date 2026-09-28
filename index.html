@@ -157,6 +157,11 @@
   .cat-group.open .sub-rows { display: block; }
   .sub-rows .cat-row { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   .sub-rows .cat-row .name { width: 90px; }
+  .sub-rows .has-details { cursor: pointer; }
+  .detail-rows { display: none; margin: 0 0 8px 20px; }
+  .sub-group.open .detail-rows { display: block; }
+  .detail-rows .cat-row { font-size: 12px; margin-bottom: 5px; }
+  .detail-rows .cat-row .name { width: 90px; }
   .dot {
     display: inline-block;
     width: 10px; height: 10px;
@@ -314,6 +319,10 @@
     font-size: 22px;
   }
   .hint { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
+  .name-toggles { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 14px; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .name-toggles > span { flex-basis: 100%; text-align: center; font-size: 12px; }
+  .name-toggles label { display: inline-flex; align-items: center; gap: 5px; color: var(--text); cursor: pointer; }
+  .name-toggles input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 
   /* Hide income & balance */
   .privacy-btn {
@@ -524,6 +533,12 @@
   .rename-sub { display: flex; align-items: center; flex-basis: 100%; margin: 0; }
   .rename-sub input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 14px; }
   .no-subs { font-size: 12px; color: var(--muted); margin: 8px 0; }
+  .details-on-btn { margin-top: 8px; padding: 4px 0; border: none; background: none; color: var(--accent); font-size: 13px; cursor: pointer; }
+  .mgr-details { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg); }
+  .mgr-details .chip { background: var(--card); }
+  .mgr-details-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+  .mgr-details-head small { display: block; font-weight: 400; color: var(--muted); }
+  .mgr-details-head .icon-btn { color: var(--muted); font-size: 12px; flex-shrink: 0; }
   .mgr-section {
     margin: 20px 0 0;
     font-size: 12px;
@@ -620,6 +635,9 @@
   .lg-row .am { width: 84px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
   .lg-row.sub { padding-left: 30px; font-size: 13px; color: var(--muted); }
   .lg-row.sub .am { font-weight: 500; color: var(--text); }
+  .lg-row.detail { padding-left: 52px; font-size: 12px; color: var(--muted); }
+  .lg-row.detail .key { width: 9px; height: 9px; border-radius: 50%; }
+  .lg-row.detail .am { font-weight: 500; font-size: 13px; color: var(--text); }
 </style>
 </head>
 <body>
@@ -695,6 +713,10 @@
       <select id="category" required></select>
       <label for="subcategory">Subcategory (optional)</label>
       <select id="subcategory"></select>
+      <div id="detailField" hidden>
+        <label for="detail">Spent on (optional)</label>
+        <select id="detail"></select>
+      </div>
       <label for="note">Note (optional)</label>
       <input type="text" id="note" placeholder="e.g. Lunch with friends">
       <label for="date">Date</label>
@@ -933,7 +955,7 @@
 
   let expenses = loadExpenses();
   savedEntries = snapshotMap(expenses, entryKey);
-  let categories = []; // [{ name, type: 'expense'|'income', icon, color, subs: [string], updatedAt }]
+  let categories = []; // [{ name, type: 'expense'|'income', icon, color, subs: [string], detailsOn, details: [string], updatedAt }]
   categories = loadCategories();
   savedCategories = snapshotMap(categories, categoryKey);
   if (normalizeCategoryColors()) saveCategories();
@@ -942,7 +964,8 @@
   const openCategories = new Set();
 
   const UI_KEY = 'moneyManager.ui.v1';
-  let ui = { tab: 'expenses', chartMode: 'cat', chartType: 'expense' };
+  // chartNames: which rings get name callouts on the chart
+  let ui = { tab: 'expenses', chartMode: 'cat', chartType: 'expense', chartNames: { cat: true, sub: false, detail: false } };
   try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY))); } catch {}
   // Period shown: { kind: 'month' } uses viewDate (stepped with ‹ ›); 'last3' / 'last6' end with the
   // current month; 'custom' has { start, end } as YYYY-MM-DD. Month view always reopens on today.
@@ -1037,6 +1060,9 @@
       }
       if (e.subcategory && !cat.subs.some(s => s.toLowerCase() === e.subcategory.toLowerCase())) {
         cat.subs.push(e.subcategory);
+      }
+      if (e.detail && !(cat.details || []).some(d => d.toLowerCase() === e.detail.toLowerCase())) {
+        cat.details = [...(cat.details || []), e.detail];
       }
     });
   }
@@ -1188,6 +1214,34 @@
 
   function subColorFor(category, sub) {
     return lchCss(subLch(category, sub));
+  }
+
+  // Optional 3rd level, off unless turned on for a category: a list of what the money went on
+  // (e.g. Trips: Food, Travel, Stay) shared by all its subcategories, so an entry can be Trips › Goa › Food.
+  // Entries keep their detail if it's turned off again; it's just ignored until turned back on.
+  function hasDetails(category) {
+    const cat = findCategory(category);
+    return !!(cat && cat.detailsOn);
+  }
+
+  function detailOf(e) {
+    return e.detail && hasDetails(e.category) ? e.detail : '';
+  }
+
+  // Shades of the subcategory's colour, darker to lighter by position in the category's list, with
+  // a hue nudge between neighbours; none chosen = grey
+  function detailColorFor(category, sub, detail) {
+    if (!detail) return FALLBACK_COLOR;
+    const base = subLch(category, sub);
+    const list = (findCategory(category) || {}).details || [];
+    let i = list.indexOf(detail);
+    if (i === -1) i = list.length;
+    const f = list.length > 1 ? i / (list.length - 1) : 0;
+    return lchCss({
+      L: Math.max(0.4, Math.min(base.L - 0.18 + 0.4 * f, 0.9)),
+      C: base.C * (1 - 0.4 * f),
+      H: (base.H + (i % 2 ? 2 : -2) * SHADE_HUE + 360) % 360,
+    });
   }
 
   // CSS variables for a tinted expense row. The wash uses the shade's hue at a capped
@@ -1484,8 +1538,17 @@
     render();
   }
 
+  // Subcategory rows opened to show what the money went on, as subKey(category, sub)
+  const openSubs = new Set();
+  function subKey(category, sub) { return JSON.stringify([category, sub]); }
+  function toggleSub(category, sub) {
+    const k = subKey(category, sub);
+    openSubs.has(k) ? openSubs.delete(k) : openSubs.add(k);
+    render();
+  }
+
   // Search within the period shown. Every word typed must appear somewhere in the entry's amount,
-  // category, subcategory or note (so "food 200" finds food entries with 200 in the amount).
+  // category, subcategory, what it was spent on or note (so "food 200" finds food entries with 200 in the amount).
   let searchQuery = '';
 
   function searchWords() {
@@ -1497,7 +1560,7 @@
     // Hidden income amounts aren't searchable, or a search could reveal them
     const amounts = typeOf(e) === 'income' && incomeHidden() ? []
       : [amount, amount.replace(/\.0+$/, ''), Number(e.amount).toLocaleString('en-IN')];
-    const text = [...amounts, e.category, e.subcategory, e.note].join(' ').toLowerCase();
+    const text = [...amounts, e.category, e.subcategory, detailOf(e), e.note].join(' ').toLowerCase();
     return words.every(w => text.includes(w.replace(/^₹/, '')));
   }
 
@@ -1600,8 +1663,8 @@
             <div class="expense" style="${rowStyle(e.category, e.subcategory)}" onclick="openEdit('${e.id}')">
               <div class="icon">${escapeHtml(iconFor(e.category))}</div>
               <div class="info">
-                <div class="title">${highlight(e.note || e.subcategory || e.category)}</div>
-                <div class="cat">${highlight(e.category)}${e.subcategory ? ' › ' + highlight(e.subcategory) : ''}</div>
+                <div class="title">${highlight(e.note || detailOf(e) || e.subcategory || e.category)}</div>
+                <div class="cat">${[e.category, e.subcategory, detailOf(e)].filter(Boolean).map(highlight).join(' › ')}</div>
               </div>
               ${typeOf(e) === 'income'
                 ? `<div class="amount income">+${incomeMoney(e.amount)}</div>`
@@ -1611,37 +1674,55 @@
     }).join('');
   }
 
-  // Per-category totals with expandable subcategory rows, for one type of entry
+  // Per-category totals with expandable subcategory rows (and, for categories tracking what the money
+  // went on, expandable rows for that under each subcategory), for one type of entry
   function renderBreakdown(cardId, listId, entries, money) {
     const total = sumAmounts(entries);
     const byCat = {};
     entries.forEach(e => {
       const c = byCat[e.category] = byCat[e.category] || { total: 0, subs: {} };
       c.total += e.amount;
-      const sub = e.subcategory || '';
-      c.subs[sub] = (c.subs[sub] || 0) + e.amount;
+      const s = c.subs[e.subcategory || ''] = c.subs[e.subcategory || ''] || { total: 0, details: {} };
+      s.total += e.amount;
+      const d = detailOf(e);
+      s.details[d] = (s.details[d] || 0) + e.amount;
     });
     const cats = Object.entries(byCat).sort((a, b) => b[1].total - a[1].total);
     document.getElementById(cardId).style.display = cats.length ? '' : 'none';
     document.getElementById(listId).innerHTML = cats.map(([name, c]) => {
-      const subs = Object.entries(c.subs).sort((a, b) => b[1] - a[1]);
-      const hasSubs = subs.some(([s]) => s !== '');
+      const subs = Object.entries(c.subs).sort((a, b) => b[1].total - a[1].total)
+        .map(([sub, s]) => [sub, s, Object.entries(s.details).sort((a, b) => b[1] - a[1])]);
+      const splits = subs.some(([, , ds]) => ds.some(([d]) => d !== ''));
+      const hasSubs = splits || subs.some(([sub]) => sub !== '');
       const isOpen = hasSubs && openCategories.has(name);
       return `
         <div class="cat-group ${hasSubs ? 'has-subs' : ''} ${isOpen ? 'open' : ''}">
           <div class="cat-row" ${hasSubs ? `data-cat="${escapeHtml(name)}"` : ''}>
             <span class="chevron">${hasSubs ? (isOpen ? '▼' : '▶') : ''}</span>
             <span class="name">${escapeHtml(iconFor(name))} ${escapeHtml(name)}</span>
-            <span class="bar"><div class="fill" style="width:${(c.total / total * 100).toFixed(1)}%">${subs.map(([sub, amt]) =>
-              `<div style="width:${(amt / c.total * 100).toFixed(2)}%;background:${subColorFor(name, sub)}"></div>`).join('')}</div></span>
+            <span class="bar"><div class="fill" style="width:${(c.total / total * 100).toFixed(1)}%">${subs.map(([sub, s]) =>
+              `<div style="width:${(s.total / c.total * 100).toFixed(2)}%;background:${subColorFor(name, sub)}"></div>`).join('')}</div></span>
             <span class="amt">${money(c.total)}</span>
           </div>
-          ${hasSubs ? `<div class="sub-rows">${subs.map(([sub, amt]) => `
-            <div class="cat-row">
-              <span class="name"><span class="dot" style="background:${subColorFor(name, sub)}"></span>${sub ? escapeHtml(sub) : '<i>Unspecified</i>'}</span>
-              <span class="bar"><div style="width:${(amt / c.total * 100).toFixed(1)}%;background:${subColorFor(name, sub)}"></div></span>
-              <span class="amt">${money(amt)}</span>
-            </div>`).join('')}</div>` : ''}
+          ${hasSubs ? `<div class="sub-rows">${subs.map(([sub, s, ds]) => {
+            const hasDetails = ds.some(([d]) => d !== '');
+            const subOpen = hasDetails && openSubs.has(subKey(name, sub));
+            return `
+            <div class="sub-group ${subOpen ? 'open' : ''}">
+              <div class="cat-row ${hasDetails ? 'has-details' : ''}" ${hasDetails ? `data-sub-of="${escapeHtml(name)}" data-sub="${escapeHtml(sub)}"` : ''}>
+                ${splits ? `<span class="chevron">${hasDetails ? (subOpen ? '▼' : '▶') : ''}</span>` : ''}
+                <span class="name"><span class="dot" style="background:${subColorFor(name, sub)}"></span>${sub ? escapeHtml(sub) : '<i>Unspecified</i>'}</span>
+                <span class="bar"><div style="width:${(s.total / c.total * 100).toFixed(1)}%;background:${subColorFor(name, sub)}"></div></span>
+                <span class="amt">${money(s.total)}</span>
+              </div>
+              ${hasDetails ? `<div class="detail-rows">${ds.map(([d, amt]) => `
+                <div class="cat-row">
+                  <span class="name"><span class="dot" style="background:${detailColorFor(name, sub, d)}"></span>${d ? escapeHtml(d) : '<i>Unspecified</i>'}</span>
+                  <span class="bar"><div style="width:${(amt / s.total * 100).toFixed(1)}%;background:${detailColorFor(name, sub, d)}"></div></span>
+                  <span class="amt">${money(amt)}</span>
+                </div>`).join('')}</div>` : ''}
+            </div>`;
+          }).join('')}</div>` : ''}
         </div>`;
     }).join('');
   }
@@ -1659,6 +1740,8 @@
   });
 
   document.getElementById('expensesView').addEventListener('click', ev => {
+    const subRow = ev.target.closest('[data-sub-of]');
+    if (subRow) return toggleSub(subRow.dataset.subOf, subRow.dataset.sub);
     const row = ev.target.closest('[data-cat]');
     if (row) toggleCategory(row.dataset.cat);
   });
@@ -1667,7 +1750,7 @@
 
   const MAX_DONUT_SLICES = 6; // beyond this, smaller categories fold into "Other"
   const CHART_SIZE = 260;
-  let chartSel = null;   // { cat, sub } | { other: true } | null; sub undefined = whole category
+  let chartSel = null;   // { cat, sub, detail } | { other: true } | null; sub/detail undefined = the whole level above
   let chartSegs = [];    // painted segments, indexed by data-i
   let chartRows = [];    // legend rows, indexed by data-i
   let chartData = null;  // { cats, total, folded }
@@ -1697,7 +1780,9 @@
     render();
   }
 
-  // Month's expenses grouped as [{ name, total, color, subs: [{ sub, name, total, color }] }], biggest first
+  // Month's expenses grouped as
+  // [{ name, total, color, subs: [{ sub, name, total, color, details: [{ detail, name, total, color }] }] }], biggest first.
+  // details is only filled for categories tracking what the money went on.
   function buildChartData(monthExpenses) {
     const byCat = new Map();
     monthExpenses.forEach(e => {
@@ -1705,18 +1790,28 @@
       if (!c) byCat.set(e.category, c = { name: e.category, total: 0, subTotals: new Map() });
       c.total += e.amount;
       const sub = e.subcategory || '';
-      c.subTotals.set(sub, (c.subTotals.get(sub) || 0) + e.amount);
+      let s = c.subTotals.get(sub);
+      if (!s) c.subTotals.set(sub, s = { total: 0, details: new Map() });
+      s.total += e.amount;
+      const d = detailOf(e);
+      s.details.set(d, (s.details.get(d) || 0) + e.amount);
     });
     return [...byCat.values()].sort((a, b) => b.total - a.total).map(c => ({
       name: c.name,
       total: c.total,
       color: colorFor(c.name),
-      subs: [...c.subTotals].sort((a, b) => b[1] - a[1]).map(([sub, t]) => ({
-        sub,
-        name: sub || 'Unspecified',
-        total: t,
-        color: subColorFor(c.name, sub),
-      })),
+      subs: [...c.subTotals].sort((a, b) => b[1].total - a[1].total).map(([sub, s]) => {
+        const details = [...s.details].sort((a, b) => b[1] - a[1]).map(([detail, t]) => ({
+          detail, name: detail || 'Unspecified', total: t, color: detailColorFor(c.name, sub, detail),
+        }));
+        return {
+          sub,
+          name: sub || 'Unspecified',
+          total: s.total,
+          color: subColorFor(c.name, sub),
+          details: details.some(d => d.detail) ? details : [],
+        };
+      }),
     }));
   }
 
@@ -1735,12 +1830,14 @@
     if (s.other) return !!seg.other;
     if (seg.other) return chartData.folded.includes(s.cat);
     if (seg.cat !== s.cat) return false;
-    // Category selected -> it and all its subs; sub selected -> it and its parent
-    return s.sub === undefined || seg.sub === undefined || seg.sub === s.sub;
+    // A selection lights up itself, everything inside it and the rings it sits in
+    if (s.sub === undefined || seg.sub === undefined) return true;
+    if (seg.sub !== s.sub) return false;
+    return s.detail === undefined || seg.detail === undefined || seg.detail === s.detail;
   }
 
   function sameSel(a, b) {
-    return !!a && !!b && a.other === b.other && a.cat === b.cat && a.sub === b.sub;
+    return !!a && !!b && a.other === b.other && a.cat === b.cat && a.sub === b.sub && a.detail === b.detail;
   }
 
   function selectChart(sel) {
@@ -1767,7 +1864,7 @@
     const pt = (r, a) => (c + r * Math.sin(a)).toFixed(2) + ' ' + (c - r * Math.cos(a)).toFixed(2);
     const ring = outerR + 14;
     const out = chartSegs.flatMap((s, i) => {
-      if (!s.name) return [];
+      if (!s.name || !ui.chartNames[s.ring]) return [];
       const m = (s.a0 + s.a1) / 2;
       return [{ i, s, m, r: (s.r0 + s.r1) / 2, side: Math.sin(m) >= 0 ? 1 : -1, dy: -ring * Math.cos(m) }];
     });
@@ -1857,9 +1954,12 @@
     }
     chartData = { cats, total, folded };
 
-    // Rings: categories only = one ring; with subcategories = inner categories + outer subcategories
-    const [inner0, inner1] = withSubs ? [62, 90] : [78, 118];
-    const [outer0, outer1] = [93, 122];
+    // Rings: categories only = one ring; with subcategories = inner categories + outer subcategories,
+    // plus a third ring for what the money went on when any category shown tracks it
+    const withDetails = withSubs && slices.some(c => !c.other && c.subs.some(s => s.details.length));
+    const [inner0, inner1] = !withSubs ? [78, 118] : withDetails ? [54, 78] : [62, 90];
+    const [outer0, outer1] = withDetails ? [81, 104] : [93, 122];
+    const [detail0, detail1] = [107, 126];
     const TAU = Math.PI * 2;
     const clampSweep = (a0, sweep) => a0 + Math.min(sweep, TAU - 0.0005);
     chartSegs = [];
@@ -1867,17 +1967,26 @@
     slices.forEach(c => {
       const sweep = c.total / total * TAU;
       const base = c.other ? { other: true } : { cat: c.name };
-      chartSegs.push({ ...base, d: arcPath(inner0, inner1, a, clampSweep(a, sweep)), color: c.color,
+      chartSegs.push({ ...base, ring: 'cat', d: arcPath(inner0, inner1, a, clampSweep(a, sweep)), color: c.color,
         label: `${c.name}: ${formatMoney(c.total)}`, name: c.other ? 'Other' : c.name, r0: inner0, r1: inner1, a0: a, a1: a + sweep });
       if (withSubs) {
         let sa = a;
         const subs = c.other ? [{ total: c.total, color: FALLBACK_COLOR }] : c.subs;
         subs.forEach(s => {
           const ss = s.total / total * TAU;
-          chartSegs.push({ ...base, sub: c.other ? undefined : s.sub, d: arcPath(outer0, outer1, sa, clampSweep(sa, ss)),
+          chartSegs.push({ ...base, ring: 'sub', sub: c.other ? undefined : s.sub, d: arcPath(outer0, outer1, sa, clampSweep(sa, ss)),
             color: s.color, label: c.other ? `${c.name}: ${formatMoney(c.total)}` : `${c.name} › ${s.name}: ${formatMoney(s.total)}`,
             // Outer ring names only real subcategories; "Other" is already named on the inner ring
             name: c.other || !s.sub ? '' : s.name, r0: outer0, r1: outer1, a0: sa, a1: sa + ss });
+          // Third ring only over subcategories that have it; elsewhere it's left empty
+          let da = sa;
+          if (withDetails && !c.other) s.details.forEach(d => {
+            const ds = d.total / total * TAU;
+            chartSegs.push({ ...base, ring: 'detail', sub: s.sub, detail: d.detail, d: arcPath(detail0, detail1, da, clampSweep(da, ds)),
+              color: d.color, label: `${c.name} › ${s.name} › ${d.name}: ${formatMoney(d.total)}`,
+              name: d.detail ? d.name : '', r0: detail0, r1: detail1, a0: da, a1: da + ds });
+            da += ds;
+          });
           sa += ss;
         });
       }
@@ -1890,25 +1999,39 @@
     cats.forEach(c => {
       chartRows.push({ sel: { cat: c.name }, cls: '', color: c.color,
         name: `${iconFor(c.name)} ${c.name}`, pc: pct(c.total, total), amount: c.total });
-      const realSubs = c.subs.some(s => s.sub);
+      const realSubs = c.subs.some(s => s.sub || s.details.length);
       if (withSubs && realSubs) {
-        c.subs.forEach(s => chartRows.push({ sel: { cat: c.name, sub: s.sub }, cls: 'sub', color: s.color,
-          name: s.name, pc: pct(s.total, c.total), amount: s.total }));
+        c.subs.forEach(s => {
+          chartRows.push({ sel: { cat: c.name, sub: s.sub }, cls: 'sub', color: s.color,
+            name: s.name, pc: pct(s.total, c.total), amount: s.total });
+          // What the money went on isn't a ring of its own (so other categories' charts don't change);
+          // it's listed under its subcategory here and shown in the middle when tapped
+          s.details.forEach(d => chartRows.push({ sel: { cat: c.name, sub: s.sub, detail: d.detail }, cls: 'detail',
+            color: d.color, name: d.name, pc: pct(d.total, s.total), amount: d.total }));
+        });
       }
     });
 
     const hints = ['Tap a slice or a row for details.'];
     if (withSubs) hints.push('Subcategory % is its share of the category.');
+    if (chartRows.some(r => r.cls === 'detail')) hints.push('Spent-on % is its share of the subcategory.');
     if (folded.length) hints.push('Smaller categories are grouped as "Other" in the chart.');
 
-    const labels = chartLabels(withSubs ? outer1 : inner1);
+    const labels = chartLabels(withDetails ? detail1 : withSubs ? outer1 : inner1);
     const W = CHART_SIZE + 2 * CHART_PAD_X, H = CHART_SIZE + 2 * labels.padY;
-    // Centre readout sits over the hole: the middle 40% of the ring's box
-    const centreBox = `left:${(CHART_PAD_X + CHART_SIZE * 0.3) / W * 100}%;width:${CHART_SIZE * 0.4 / W * 100}%;` +
+    // Centre readout sits over the hole: the middle 40% of the ring's box, narrower when a third ring shrinks the hole
+    const centreW = Math.min(CHART_SIZE * 0.4, inner0 * 1.68);
+    const centreBox = `left:${(CHART_PAD_X + (CHART_SIZE - centreW) / 2) / W * 100}%;width:${centreW / W * 100}%;` +
       `top:${labels.padY / H * 100}%;height:${CHART_SIZE / H * 100}%`;
+
+    // Name toggles, one per ring on show
+    const nameBox = (key, text) => `<label><input type="checkbox" data-names="${key}"${ui.chartNames[key] ? ' checked' : ''}> ${text}</label>`;
+    const nameToggles = `<div class="name-toggles"><span>Show names on chart</span>${nameBox('cat', 'Category')}` +
+      (withSubs ? nameBox('sub', 'Subcategory') : '') + (withDetails ? nameBox('detail', 'Spent on') : '') + '</div>';
 
     el.innerHTML = `
       <div class="card">
+        ${nameToggles}
         <div class="chart-wrap">
           <svg id="chartSvg" viewBox="${-CHART_PAD_X} ${-labels.padY} ${W} ${H}" role="img" aria-label="${ui.chartType === 'income' ? 'Income' : 'Spending'} chart">
             ${chartSegs.map((s, i) => `<path class="seg" data-i="${i}" d="${s.d}" fill="${s.color}"
@@ -1924,7 +2047,7 @@
         <div id="chartLegend">${chartRows.map((r, i) => `
           <div class="lg-row ${r.cls}" data-i="${i}">
             <span class="key" style="background:${r.color}"></span>
-            <span class="nm">${r.cls === 'sub' && !r.sel.sub ? '<i>Unspecified</i>' : escapeHtml(r.name)}</span>
+            <span class="nm">${(r.cls === 'sub' && !r.sel.sub) || (r.cls === 'detail' && !r.sel.detail) ? '<i>Unspecified</i>' : escapeHtml(r.name)}</span>
             <span class="pc">${r.pc}</span>
             <span class="am">${formatMoney(r.amount)}</span>
           </div>`).join('')}
@@ -1958,9 +2081,16 @@
         sub = (c.total / total * 100).toFixed(1) + '% of ' + range.of;
       } else if (c) {
         const sc = c.subs.find(x => x.sub === s.sub);
-        value = sc.total;
-        label = `${c.name} › ${sc.name}`;
-        sub = `${(sc.total / c.total * 100).toFixed(0)}% of ${c.name} · ${(sc.total / total * 100).toFixed(1)}% of ${range.of}`;
+        const dc = s.detail !== undefined && sc.details.find(x => x.detail === s.detail);
+        if (dc) {
+          value = dc.total;
+          label = `${sc.name} › ${dc.name}`;
+          sub = `${(dc.total / sc.total * 100).toFixed(0)}% of ${sc.name} · ${(dc.total / c.total * 100).toFixed(0)}% of ${c.name}`;
+        } else {
+          value = sc.total;
+          label = `${c.name} › ${sc.name}`;
+          sub = `${(sc.total / c.total * 100).toFixed(0)}% of ${c.name} · ${(sc.total / total * 100).toFixed(1)}% of ${range.of}`;
+        }
       }
     }
     const center = document.getElementById('chartCenter');
@@ -1988,12 +2118,20 @@
   document.getElementById('chartContent').addEventListener('click', ev => {
     const seg = ev.target.closest('.seg, .seg-callout');
     if (seg) {
-      const { other, cat, sub } = chartSegs[seg.dataset.i];
-      return selectChart(other ? { other: true } : { cat, sub });
+      const { other, cat, sub, detail } = chartSegs[seg.dataset.i];
+      return selectChart(other ? { other: true } : { cat, sub, detail });
     }
     const row = ev.target.closest('.lg-row');
     if (row) return selectChart(chartRows[row.dataset.i].sel);
     if (ev.target.closest('.chart-wrap')) { chartSel = null; paintChartSelection(); }
+  });
+
+  document.getElementById('chartContent').addEventListener('change', ev => {
+    const key = ev.target.dataset.names;
+    if (!key) return;
+    ui.chartNames = { ...ui.chartNames, [key]: ev.target.checked };
+    saveUi();
+    render();
   });
 
   document.getElementById('chartContent').addEventListener('keydown', ev => {
@@ -2011,7 +2149,7 @@
   let entryType = 'expense'; // type being added/edited in the form
 
   // Switch the form between expense and income; the category list shows only that type
-  function setEntryType(type, category = '', sub = '') {
+  function setEntryType(type, category = '', sub = '', detail = '') {
     entryType = type;
     document.querySelectorAll('#entryTypeToggle button')
       .forEach(b => b.classList.toggle('active', b.dataset.type === type));
@@ -2022,6 +2160,7 @@
     }
     fillCategoryOptions(category);
     fillSubcategoryOptions(category, sub);
+    fillDetailOptions(category, detail);
   }
 
   function fillCategoryOptions(selected) {
@@ -2047,6 +2186,20 @@
     select.value = selected || '';
   }
 
+  // Only shown for categories tracking what the money went on
+  function fillDetailOptions(category, selected) {
+    const cat = findCategory(category);
+    document.getElementById('detailField').hidden = !hasDetails(category);
+    const details = cat && cat.details ? [...cat.details] : [];
+    if (selected && !details.includes(selected)) details.push(selected);
+    const select = document.getElementById('detail');
+    select.innerHTML =
+      '<option value="">— None —</option>' +
+      details.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('') +
+      `<option value="${ADD_NEW}">➕ Add new…</option>`;
+    select.value = selected || '';
+  }
+
   function openAdd() {
     editingId = null;
     document.getElementById('expenseForm').reset();
@@ -2066,7 +2219,7 @@
     }
     editingId = id;
     document.getElementById('amount').value = e.amount;
-    setEntryType(typeOf(e), e.category, e.subcategory || '');
+    setEntryType(typeOf(e), e.category, e.subcategory || '', e.detail || '');
     document.getElementById('note').value = e.note;
     document.getElementById('date').value = e.date;
     document.getElementById('deleteBtn').style.display = '';
@@ -2085,6 +2238,7 @@
       fillCategoryOptions(category);
     }
     fillSubcategoryOptions(category, '');
+    fillDetailOptions(category, '');
   });
 
   document.getElementById('entryTypeToggle').addEventListener('click', ev => {
@@ -2097,6 +2251,13 @@
     const category = document.getElementById('category').value;
     const sub = addSubcategory(category, prompt('New subcategory for ' + category + ':')) || '';
     fillSubcategoryOptions(category, sub);
+  });
+
+  document.getElementById('detail').addEventListener('change', ev => {
+    if (ev.target.value !== ADD_NEW) return;
+    const category = document.getElementById('category').value;
+    const detail = addDetail(category, prompt(`New thing to track under ${category} (e.g. Food, Travel, Stay):`)) || '';
+    fillDetailOptions(category, detail);
   });
 
   document.getElementById('expenseForm').addEventListener('submit', ev => {
@@ -2113,6 +2274,11 @@
     if (data.subcategory === ADD_NEW) data.subcategory = '';
 
     const editing = editingId && expenses.find(x => x.id === editingId);
+    // A detail saved while tracking was on is kept if the field is hidden now, unless the category changed
+    let detail = hasDetails(data.category) ? document.getElementById('detail').value
+      : editing && editing.category === data.category ? editing.detail || '' : '';
+    if (detail === ADD_NEW) detail = '';
+    if (detail || (editing && editing.detail)) data.detail = detail;
     if (editing) {
       Object.assign(editing, data);
     } else if (editingId) {
@@ -2171,6 +2337,67 @@
     return sub;
   }
 
+  function addDetail(categoryName, detail) {
+    detail = (detail || '').trim();
+    const cat = findCategory(categoryName);
+    if (!cat || !detail || detail === ADD_NEW) return null;
+    cat.details = cat.details || [];
+    const existing = cat.details.find(d => d.toLowerCase() === detail.toLowerCase());
+    if (existing) return existing;
+    cat.details.push(detail);
+    saveCategories();
+    return detail;
+  }
+
+  function setDetailsOn(index, on) {
+    const cat = categories[index];
+    if (!on) {
+      const used = expenses.filter(e => e.category === cat.name && e.detail).length;
+      if (used && !confirm(`Stop tracking what you spent on for ${cat.name}?\n\n${used} entr${used === 1 ? 'y has' : 'ies have'} it set. ` +
+        `They keep it (just hidden), and it all comes back if you turn this on again.`)) return;
+    }
+    cat.detailsOn = on;
+    cat.details = cat.details || [];
+    renamingDetail = null;
+    saveCategories();
+    renderCategoryManager();
+    render();
+    if (on) document.querySelector(`#categoryManager .add-detail[data-i="${index}"] input`).focus();
+  }
+
+  function renameDetail(index, k, newName) {
+    const cat = categories[index];
+    const oldName = cat.details[k];
+    newName = (newName || '').trim();
+    if (!newName || newName === oldName || newName === ADD_NEW) return newName === oldName;
+    const clash = cat.details.find((d, j) => j !== k && d.toLowerCase() === newName.toLowerCase());
+    if (clash) {
+      alert(`${cat.name} already has "${clash}".`);
+      return false;
+    }
+    const lower = v => String(v || '').toLowerCase();
+    cat.details[k] = newName;
+    expenses.forEach(e => {
+      if (lower(e.category) === lower(cat.name) && lower(e.detail) === lower(oldName)) e.detail = newName;
+    });
+    if (chartSel && chartSel.cat === cat.name && chartSel.detail === oldName) chartSel = { ...chartSel, detail: newName };
+    saveCategories();
+    saveExpenses();
+    return true;
+  }
+
+  function deleteDetail(index, k) {
+    const cat = categories[index];
+    const detail = cat.details[k];
+    const used = expenses.filter(e => e.category === cat.name && e.detail === detail).length;
+    const msg = `Remove "${detail}" from ${cat.name}?` +
+      (used ? `\n\n${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still show under "${detail}".` : '');
+    if (!confirm(msg)) return;
+    cat.details.splice(k, 1);
+    saveCategories();
+    renderCategoryManager();
+  }
+
   function deleteCategory(index) {
     const cat = categories[index];
     const used = expenses.filter(e => e.category === cat.name).length;
@@ -2178,7 +2405,7 @@
       (used ? `\n\n${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still count under "${cat.name}" in totals.` : '');
     if (!confirm(msg)) return;
     categories.splice(index, 1);
-    openPicker = openEmoji = renamingCat = renamingSub = null; // indices shift
+    openPicker = openEmoji = renamingCat = renamingSub = renamingDetail = null; // indices shift
     saveCategories();
     renderCategoryManager();
     render();
@@ -2247,12 +2474,13 @@
   let emojiGroup = 0;      // index into EMOJI_GROUPS of the tab showing
   let renamingCat = null;  // index of the category whose name is being edited, or null
   let renamingSub = null;  // { i, j }: category index and subcategory index being edited, or null
+  let renamingDetail = null; // { i, k }: category index and index into its details being edited, or null
 
   function openCategoryManager() {
     newCatColor = nextColor();
     newCatType = 'expense';
     newCatIcon = DEFAULT_ICON;
-    openPicker = openEmoji = renamingCat = renamingSub = null;
+    openPicker = openEmoji = renamingCat = renamingSub = renamingDetail = null;
     renderCategoryManager();
     openModal('categoriesModal');
   }
@@ -2369,6 +2597,36 @@
           <input type="text" placeholder="Add subcategory to ${escapeHtml(c.name)}" required>
           <button type="submit" class="btn secondary small">+</button>
         </form>
+        ${c.detailsOn ? detailsManagerHtml(c, i) : `
+          <button type="button" class="details-on-btn" data-action="details-on" data-i="${i}">＋ Track what you spent on in each subcategory</button>`}
+      </div>`;
+  }
+
+  // The optional 3rd level for one category: its shared list, e.g. Trips: Food, Travel, Stay
+  function detailsManagerHtml(c, i) {
+    const example = c.subs[0] || 'Goa';
+    return `
+      <div class="mgr-details">
+        <div class="mgr-details-head">
+          <span>Spent on<small>Same list for every ${escapeHtml(c.name)} subcategory, e.g. ${escapeHtml(example)} › Food</small></span>
+          <button type="button" class="icon-btn" data-action="details-off" data-i="${i}">Turn off</button>
+        </div>
+        ${(c.details || []).length
+          ? `<div class="chips">${c.details.map((d, k) => renamingDetail && renamingDetail.i === i && renamingDetail.k === k ? `
+              <form class="rename-sub rename-detail" data-i="${i}" data-k="${k}">
+                <input type="text" value="${escapeHtml(d)}" aria-label="New name for ${escapeHtml(d)}" required>
+                <span class="rename-actions">
+                  <button type="submit" class="btn primary small">Save</button>
+                  <button type="button" class="btn secondary small" data-action="cancel-rename" data-i="${i}">Cancel</button>
+                </span>
+              </form>` : `
+              <span class="chip"><span class="dot" style="background:${detailColorFor(c.name, '', d)}"></span>${escapeHtml(d)}<button class="chip-edit" data-action="rename-detail" data-i="${i}" data-k="${k}" aria-label="Rename ${escapeHtml(d)}">✏️</button><button data-action="delete-detail" data-i="${i}" data-k="${k}" aria-label="Remove">✕</button></span>`).join('')}
+            </div>`
+          : '<div class="no-subs">Nothing yet. Add things like Food, Travel, Stay, Shopping.</div>'}
+        <form class="add-row add-detail" data-i="${i}">
+          <input type="text" placeholder="Add e.g. Food, Travel, Stay" required>
+          <button type="submit" class="btn secondary small">+</button>
+        </form>
       </div>`;
   }
 
@@ -2406,9 +2664,20 @@
     const action = btn.dataset.action;
     if (action === 'delete-cat') deleteCategory(owner);
     if (action === 'delete-sub') deleteSubcategory(owner, Number(btn.dataset.j));
+    if (action === 'details-on') setDetailsOn(owner, true);
+    if (action === 'details-off') setDetailsOn(owner, false);
+    if (action === 'delete-detail') deleteDetail(owner, Number(btn.dataset.k));
+    if (action === 'rename-detail') {
+      renamingDetail = { i: owner, k: Number(btn.dataset.k) };
+      openPicker = openEmoji = renamingCat = renamingSub = null;
+      renderCategoryManager();
+      const input = document.querySelector(`.rename-detail[data-i="${owner}"][data-k="${btn.dataset.k}"] input`);
+      input.focus();
+      input.select();
+    }
     if (action === 'rename-cat') {
       renamingCat = owner;
-      openPicker = openEmoji = renamingSub = null;
+      openPicker = openEmoji = renamingSub = renamingDetail = null;
       renderCategoryManager();
       const input = document.querySelector(`#renameCat${owner} input`);
       input.focus();
@@ -2416,14 +2685,14 @@
     }
     if (action === 'rename-sub') {
       renamingSub = { i: owner, j: Number(btn.dataset.j) };
-      openPicker = openEmoji = renamingCat = null;
+      openPicker = openEmoji = renamingCat = renamingDetail = null;
       renderCategoryManager();
       const input = document.querySelector(`.rename-sub[data-i="${owner}"][data-j="${btn.dataset.j}"] input`);
       input.focus();
       input.select();
     }
     if (action === 'cancel-rename') {
-      renamingCat = renamingSub = null;
+      renamingCat = renamingSub = renamingDetail = null;
       renderCategoryManager();
     }
     if (action === 'toggle-picker') {
@@ -2485,6 +2754,27 @@
       }
       return;
     }
+    const renameDet = ev.target.closest('.rename-detail');
+    if (renameDet) {
+      ev.preventDefault();
+      if (renameDetail(Number(renameDet.dataset.i), Number(renameDet.dataset.k), renameDet.querySelector('input').value)) {
+        renamingDetail = null;
+        renderCategoryManager();
+        render();
+      }
+      return;
+    }
+    const detailForm = ev.target.closest('.add-detail');
+    if (detailForm) {
+      ev.preventDefault();
+      if (addDetail(categories[Number(detailForm.dataset.i)].name, detailForm.querySelector('input').value)) {
+        renderCategoryManager();
+        render();
+        const again = document.querySelector(`#categoryManager .add-detail[data-i="${detailForm.dataset.i}"] input`);
+        if (again) again.focus();
+      }
+      return;
+    }
     const renameSub = ev.target.closest('.rename-sub');
     if (renameSub) {
       ev.preventDefault();
@@ -2542,6 +2832,10 @@
             (Array.isArray(c.subs) ? c.subs : []).forEach(s => {
               if (typeof s === 'string') addSubcategory(name, s);
             });
+            (Array.isArray(c.details) ? c.details : []).forEach(d => {
+              if (typeof d === 'string') addDetail(name, d);
+            });
+            if (c.detailsOn && findCategory(name)) findCategory(name).detailsOn = true;
           });
         }
         ensureCategoriesFor(added);
