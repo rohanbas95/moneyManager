@@ -296,6 +296,40 @@
     color: var(--text);
   }
   input.big { font-size: 28px; font-weight: 600; }
+  .amount-field { position: relative; }
+  .amount-field input { padding-right: 56px; }
+  .calc-toggle {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 10px;
+    background: none;
+    font-size: 22px;
+    cursor: pointer;
+    opacity: 0.6;
+  }
+  .calc-toggle[aria-pressed="true"] { background: var(--card); opacity: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+  .calc-preview { min-height: 18px; margin-top: 4px; font-size: 13px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .calc-preview.error { color: var(--danger); }
+  .calc-pad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+  .calc-pad button {
+    padding: 12px 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+    color: var(--text);
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .calc-pad button:active { background: var(--bg); }
+  .calc-pad .op { color: var(--accent); }
+  .calc-pad .eq { background: var(--accent); border-color: var(--accent); color: #fff; }
   .btn-row { display: flex; gap: 8px; margin-top: 20px; }
   .btn {
     flex: 1;
@@ -718,7 +752,34 @@
         <button type="button" data-type="income">Income</button>
       </div>
       <label for="amount">Amount</label>
-      <input class="big" type="number" id="amount" inputmode="decimal" step="0.01" min="0.01" required>
+      <div class="amount-field">
+        <input class="big" type="text" id="amount" inputmode="decimal" autocomplete="off" required
+          placeholder="0" aria-describedby="calcPreview">
+        <button type="button" class="calc-toggle" id="calcToggle" aria-label="Calculator" aria-pressed="false">🧮</button>
+      </div>
+      <div class="calc-preview" id="calcPreview" aria-live="polite"></div>
+      <div class="calc-pad" id="calcPad" hidden>
+        <button type="button" data-key="C" class="op">C</button>
+        <button type="button" data-key="(" class="op">(</button>
+        <button type="button" data-key=")" class="op">)</button>
+        <button type="button" data-key="÷" class="op">÷</button>
+        <button type="button" data-key="7">7</button>
+        <button type="button" data-key="8">8</button>
+        <button type="button" data-key="9">9</button>
+        <button type="button" data-key="×" class="op">×</button>
+        <button type="button" data-key="4">4</button>
+        <button type="button" data-key="5">5</button>
+        <button type="button" data-key="6">6</button>
+        <button type="button" data-key="−" class="op">−</button>
+        <button type="button" data-key="1">1</button>
+        <button type="button" data-key="2">2</button>
+        <button type="button" data-key="3">3</button>
+        <button type="button" data-key="+" class="op">+</button>
+        <button type="button" data-key=".">.</button>
+        <button type="button" data-key="0">0</button>
+        <button type="button" data-key="⌫" class="op" aria-label="Backspace">⌫</button>
+        <button type="button" data-key="=" class="eq">=</button>
+      </div>
       <label for="category">Category</label>
       <select id="category" required></select>
       <label for="subcategory">Subcategory (optional)</label>
@@ -993,8 +1054,8 @@
   const openCategories = new Set();
 
   const UI_KEY = 'moneyManager.ui.v1';
-  // chartNames: which rings get name callouts on the chart
-  let ui = { tab: 'expenses', chartMode: 'cat', chartType: 'expense', chartNames: { cat: true, sub: false, detail: false } };
+  // chartNames: which rings get name callouts on the chart; calc: amount keypad left open
+  let ui = { tab: 'expenses', chartMode: 'cat', chartType: 'expense', chartNames: { cat: true, sub: false, detail: false }, calc: false };
   try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY))); } catch {}
   // Period shown: { kind: 'month' } uses viewDate (stepped with ‹ ›); 'last3' / 'last6' end with the
   // current month; 'custom' has { start, end } as YYYY-MM-DD. Month view always reopens on today.
@@ -2222,6 +2283,102 @@
 
   let entryType = 'expense'; // type being added/edited in the form
 
+  // ---- Amount calculator: the field takes a plain number or a sum like 120+45*2 ----
+
+  // Value of an arithmetic expression (+ - * / and brackets, × ÷ − x accepted), rounded to paise;
+  // null when it isn't a complete expression. Parsed by hand rather than eval'd.
+  function evalAmount(text) {
+    const src = String(text).replace(/[×xX]/g, '*').replace(/÷/g, '/').replace(/[−–]/g, '-').replace(/,/g, '').replace(/\s+/g, '');
+    if (!src) return null;
+    const tokens = src.match(/\d+\.?\d*|\.\d+|[-+*/()]|./g);
+    let i = 0;
+    const peek = () => tokens[i];
+    function expr() {
+      let v = term();
+      while (peek() === '+' || peek() === '-') v = tokens[i++] === '+' ? v + term() : v - term();
+      return v;
+    }
+    function term() {
+      let v = factor();
+      while (peek() === '*' || peek() === '/') v = tokens[i++] === '*' ? v * factor() : v / factor();
+      return v;
+    }
+    function factor() {
+      const t = tokens[i++];
+      if (t === '-') return -factor();
+      if (t === '+') return factor();
+      if (t === '(') {
+        const v = expr();
+        if (tokens[i++] !== ')') throw 0;
+        return v;
+      }
+      if (t !== undefined && /^[\d.]+$/.test(t)) return parseFloat(t);
+      throw 0;
+    }
+    try {
+      const v = expr();
+      if (i !== tokens.length || !isFinite(v)) return null;
+      return Math.round(v * 100) / 100;
+    } catch {
+      return null;
+    }
+  }
+
+  const amountInput = document.getElementById('amount');
+
+  // Preview of a calculation under the field, and the message shown if saved while it isn't valid
+  function updateCalc() {
+    const text = amountInput.value.trim();
+    const v = evalAmount(text);
+    const isSum = /[-+*/×÷−()xX]/.test(text.replace(/^[-−]/, ''));
+    const preview = document.getElementById('calcPreview');
+    preview.classList.toggle('error', !!text && v === null);
+    preview.textContent = !text ? '' : v === null ? (isSum ? 'Incomplete calculation' : 'Not a number')
+      : isSum ? '= ' + formatMoney(v) : '';
+    amountInput.setCustomValidity(!text || v > 0 ? '' : v === null ? 'Enter an amount or a calculation like 120+45' : 'Amount must be more than 0');
+  }
+
+  function setCalcOpen(open) {
+    ui.calc = open;
+    saveUi();
+    document.getElementById('calcPad').hidden = !open;
+    document.getElementById('calcToggle').setAttribute('aria-pressed', open);
+    // With the keypad up, keep the phone keyboard down
+    amountInput.inputMode = open ? 'none' : 'decimal';
+  }
+
+  function pressCalcKey(key) {
+    const el = amountInput;
+    if (key === 'C') el.value = '';
+    else if (key === '=') {
+      const v = evalAmount(el.value);
+      if (v !== null) el.value = String(v);
+    } else {
+      const start = el.selectionStart ?? el.value.length, end = el.selectionEnd ?? el.value.length;
+      if (key === '⌫') {
+        if (start === end && start > 0) el.setRangeText('', start - 1, end, 'end');
+        else el.setRangeText('', start, end, 'end');
+      } else {
+        el.setRangeText(key, start, end, 'end');
+      }
+    }
+    updateCalc();
+  }
+
+  amountInput.addEventListener('input', updateCalc);
+  document.getElementById('calcToggle').addEventListener('click', () => {
+    setCalcOpen(!ui.calc);
+    amountInput.focus();
+  });
+  const calcPad = document.getElementById('calcPad');
+  // Keys don't take focus, so the caret stays where it was in the field
+  calcPad.addEventListener('pointerdown', ev => { if (ev.target.closest('button')) ev.preventDefault(); });
+  calcPad.addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (b) pressCalcKey(b.dataset.key);
+  });
+  setCalcOpen(ui.calc);
+
   // Switch the form between expense and income; the category list shows only that type
   function setEntryType(type, category = '', sub = '', detail = '') {
     entryType = type;
@@ -2279,6 +2436,7 @@
     document.getElementById('expenseForm').reset();
     document.getElementById('date').value = todayISO();
     setEntryType('expense');
+    updateCalc();
     document.getElementById('deleteBtn').style.display = 'none';
     openModal('expenseModal');
     setTimeout(() => document.getElementById('amount').focus(), 50);
@@ -2293,6 +2451,7 @@
     }
     editingId = id;
     document.getElementById('amount').value = e.amount;
+    updateCalc();
     setEntryType(typeOf(e), e.category, e.subcategory || '', e.detail || '');
     document.getElementById('note').value = e.note;
     document.getElementById('date').value = e.date;
@@ -2337,7 +2496,7 @@
   document.getElementById('expenseForm').addEventListener('submit', ev => {
     ev.preventDefault();
     const data = {
-      amount: parseFloat(document.getElementById('amount').value),
+      amount: evalAmount(document.getElementById('amount').value),
       category: document.getElementById('category').value,
       subcategory: document.getElementById('subcategory').value,
       note: document.getElementById('note').value.trim(),
