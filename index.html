@@ -643,6 +643,11 @@
   .lg-row.detail { padding-left: 52px; font-size: 12px; color: var(--muted); }
   .lg-row.detail .key { width: 9px; height: 9px; border-radius: 50%; }
   .lg-row.detail .am { font-weight: 500; font-size: 13px; color: var(--text); }
+  .txn-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .txn-head h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .txn-head span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .txn-close { width: 30px; height: 30px; border: none; border-radius: 50%; background: var(--bg); color: var(--muted); font-size: 13px; cursor: pointer; }
+  #chartTxns .day-group:last-child { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -1671,9 +1676,14 @@
       list.innerHTML = `<div class="empty">No transactions match “${escapeHtml(searchQuery.trim())}” ${range.empty}.</div>`;
       return;
     }
+    list.innerHTML = dayGroupsHtml(shown, highlight);
+  }
+
+  // Transactions grouped by day, newest first; mark escapes text (and can highlight search words)
+  function dayGroupsHtml(entries, mark) {
     const byDay = {};
-    shown.forEach(e => { (byDay[e.date] = byDay[e.date] || []).push(e); });
-    list.innerHTML = Object.entries(byDay).map(([date, items]) => {
+    entries.forEach(e => { (byDay[e.date] = byDay[e.date] || []).push(e); });
+    return Object.entries(byDay).map(([date, items]) => {
       const dayIn = sumAmounts(items.filter(e => typeOf(e) === 'income'));
       const dayOut = sumAmounts(items.filter(e => typeOf(e) === 'expense'));
       const dayTotals = [dayIn ? '+' + incomeMoney(dayIn) : '', dayOut ? '−' + formatMoney(dayOut) : ''].filter(Boolean).join(' · ');
@@ -1687,8 +1697,8 @@
             <div class="expense" style="${rowStyle(e.category, e.subcategory)}" onclick="openEdit('${e.id}')">
               <div class="icon">${escapeHtml(iconFor(e.category))}</div>
               <div class="info">
-                <div class="title">${highlight(e.note || detailOf(e) || e.subcategory || e.category)}</div>
-                <div class="cat">${[e.category, e.subcategory, detailOf(e)].filter(Boolean).map(highlight).join(' › ')}</div>
+                <div class="title">${mark(e.note || detailOf(e) || e.subcategory || e.category)}</div>
+                <div class="cat">${[e.category, e.subcategory, detailOf(e)].filter(Boolean).map(mark).join(' › ')}</div>
               </div>
               ${typeOf(e) === 'income'
                 ? `<div class="amount income">+${incomeMoney(e.amount)}</div>`
@@ -1777,7 +1787,7 @@
   let chartSel = null;   // { cat, sub, detail } | { other: true } | null; sub/detail undefined = the whole level above
   let chartSegs = [];    // painted segments, indexed by data-i
   let chartRows = [];    // legend rows, indexed by data-i
-  let chartData = null;  // { cats, total, folded }
+  let chartData = null;  // { cats, total, folded, entries }
 
   function saveUi() {
     localStorage.setItem(UI_KEY, JSON.stringify(ui));
@@ -1976,7 +1986,7 @@
       folded = rest.map(c => c.name);
       slices.push({ other: true, name: `Other (${rest.length})`, total: rest.reduce((s, c) => s + c.total, 0), color: FALLBACK_COLOR });
     }
-    chartData = { cats, total, folded };
+    chartData = { cats, total, folded, entries: monthExpenses };
 
     // Rings: categories only = one ring; with subcategories = inner categories + outer subcategories,
     // plus a third ring for what the money went on when any category shown tracks it
@@ -2036,7 +2046,11 @@
       }
     });
 
-    const hints = ['Tap a slice or a row for details.'];
+    // Drop a selection that's no longer on show (e.g. its last transaction was just edited away)
+    const selOf = seg => seg.other ? { other: true } : { cat: seg.cat, sub: seg.sub, detail: seg.detail };
+    if (chartSel && !chartRows.some(r => sameSel(r.sel, chartSel)) && !chartSegs.some(seg => sameSel(selOf(seg), chartSel))) chartSel = null;
+
+    const hints = ['Tap a slice or a row to see its transactions.'];
     if (withSubs) hints.push('Subcategory % is its share of the category.');
     if (chartRows.some(r => r.cls === 'detail')) hints.push('Spent-on % is its share of the subcategory.');
     if (folded.length) hints.push('Smaller categories are grouped as "Other" in the chart.');
@@ -2066,6 +2080,7 @@
         </div>
         <p class="hint" style="text-align:center">${hints.join(' ')}</p>
       </div>
+      <div class="card" id="chartTxns" hidden></div>
       <div class="card">
         <h2>${withSubs ? 'Categories & subcategories' : 'Categories'}</h2>
         <div id="chartLegend">${chartRows.map((r, i) => `
@@ -2122,6 +2137,35 @@
     center.children[0].textContent = formatMoney(value);
     center.children[1].textContent = label;
     center.children[2].textContent = sub;
+    renderChartTransactions();
+  }
+
+  // Transactions behind the selected slice or row
+  function chartSelMatches(e) {
+    const s = chartSel;
+    if (s.other) return chartData.folded.includes(e.category);
+    if (e.category !== s.cat) return false;
+    if (s.sub !== undefined && (e.subcategory || '') !== s.sub) return false;
+    return s.detail === undefined || detailOf(e) === s.detail;
+  }
+
+  function renderChartTransactions() {
+    const card = document.getElementById('chartTxns');
+    card.hidden = !chartSel;
+    if (!chartSel) return;
+    const s = chartSel;
+    const title = s.other ? `Other (${chartData.folded.length} categories)`
+      : [`${iconFor(s.cat)} ${s.cat}`, s.sub === undefined ? '' : s.sub || 'Unspecified',
+         s.detail === undefined ? '' : s.detail || 'Unspecified'].filter(Boolean).join(' › ');
+    const items = chartData.entries.filter(chartSelMatches);
+    card.innerHTML = `
+      <div class="txn-head">
+        <h2></h2>
+        <span>${items.length} transaction${items.length === 1 ? '' : 's'}</span>
+        <button class="txn-close" aria-label="Close">✕</button>
+      </div>
+      ${dayGroupsHtml(items, escapeHtml)}`;
+    card.querySelector('h2').textContent = title;
   }
 
   document.querySelector('.tabs').addEventListener('click', ev => {
@@ -2145,8 +2189,14 @@
       const { other, cat, sub, detail } = chartSegs[seg.dataset.i];
       return selectChart(other ? { other: true } : { cat, sub, detail });
     }
+    if (ev.target.closest('.txn-close')) { chartSel = null; return paintChartSelection(); }
     const row = ev.target.closest('.lg-row');
-    if (row) return selectChart(chartRows[row.dataset.i].sel);
+    if (row) {
+      selectChart(chartRows[row.dataset.i].sel);
+      // The list sits above the legend, so bring it into view when picked from down here
+      if (chartSel) document.getElementById('chartTxns').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     if (ev.target.closest('.chart-wrap')) { chartSel = null; paintChartSelection(); }
   });
 
