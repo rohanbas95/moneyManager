@@ -24,9 +24,12 @@
     --bg: #f4f5f7;
     --card: #ffffff;
     --text: #1f2937;
-    --muted: #6b7280;
+    --muted: #646b77;
     --accent: #0f766e;
     --danger: #dc2626;
+    /* accent / danger used as text: same in light; lighter in dark so they stay readable on dark cards */
+    --accent-ink: #0f766e;
+    --danger-ink: #dc2626;
     --border: #e5e7eb;
     --income: #15803d;
     /* People in a split group's spending report, in fixed order (checked for colour-blind separation) */
@@ -45,6 +48,8 @@
       --muted: #9ca3af;
       --border: #374151;
       --income: #4ade80;
+      --accent-ink: #2dd4bf;
+      --danger-ink: #f87171;
       --p1: #3987e5; --p2: #d95926; --p3: #199e70; --p4: #c98500;
       --p5: #d55181; --p6: #008300; --p7: #9085e9; --p8: #e66767;
     }
@@ -57,6 +62,8 @@
     --muted: #9ca3af;
     --border: #374151;
     --income: #4ade80;
+    --accent-ink: #2dd4bf;
+    --danger-ink: #f87171;
     --p1: #3987e5; --p2: #d95926; --p3: #199e70; --p4: #c98500;
     --p5: #d55181; --p6: #008300; --p7: #9085e9; --p8: #e66767;
   }
@@ -122,7 +129,7 @@
   }
   .period-opt .when { font-size: 13px; color: var(--muted); }
   .period-opt.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
-  .period-opt.active .when::after { content: ' ✓'; color: var(--accent); font-weight: 700; }
+  .period-opt.active .when::after { content: ' ✓'; color: var(--accent-ink); font-weight: 700; }
   .range-inputs { display: flex; gap: 8px; }
   .range-inputs > div { flex: 1; min-width: 0; }
   .custom-title { margin: 20px 0 0; font-size: 15px; }
@@ -270,6 +277,79 @@
     border: none;
     box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   }
+  /* In-app dialog (replaces the browser's alert / confirm / prompt) */
+  .dialog-bg {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    background: rgba(0,0,0,0.5);
+  }
+  .dialog {
+    width: 100%; max-width: 400px;
+    padding: 20px;
+    border-radius: 16px;
+    background: var(--card);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+  }
+  .dialog h3 { margin: 0 0 8px; font-size: 18px; }
+  .dialog p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--text); white-space: pre-line; }
+  .dialog h3 + p { color: var(--muted); font-size: 14px; }
+  .dialog input { margin-top: 14px; }
+  .dialog-error { margin-top: 8px; font-size: 13px; color: var(--danger-ink); }
+  .dialog .btn-row { margin-top: 18px; }
+  /* Add-expense quick picks: recent categories, Today / Yesterday */
+  .quick-chips { display: flex; gap: 6px; overflow-x: auto; margin: 8px 0 0; padding-bottom: 2px; scrollbar-width: none; }
+  .quick-chips::-webkit-scrollbar { display: none; }
+  .quick-chip {
+    flex: none;
+    min-height: 34px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 17px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .quick-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-row.save-row .btn.secondary.another { flex: 1.4; }
+  /* Empty states */
+  .empty .empty-icon { display: block; font-size: 40px; margin-bottom: 8px; }
+  .empty .empty-title { display: block; color: var(--text); font-size: 16px; font-weight: 600; }
+  /* Loading placeholder rows */
+  .skeleton-row { display: flex; align-items: center; gap: 12px; padding: 10px 4px; }
+  .skeleton-row i { display: block; border-radius: 8px; background: linear-gradient(90deg, var(--bg) 25%, var(--border) 50%, var(--bg) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite linear; }
+  .skeleton-row .sk-a { width: 38px; height: 38px; border-radius: 12px; flex: none; }
+  .skeleton-row .sk-b { flex: 1; height: 14px; }
+  .skeleton-row .sk-c { width: 60px; height: 14px; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .skeleton-row i, .loading-spin { animation: none; } }
+  /* Bigger tap targets for small ✕ buttons */
+  .chip button { min-width: 32px; min-height: 30px; }
+  .txn-close { width: 36px; height: 36px; }
+  /* Toast: short message at the bottom, sometimes with an Undo */
+  .toast {
+    position: fixed; left: 50%; bottom: 92px; z-index: 70;
+    display: flex; align-items: center; gap: 14px;
+    max-width: min(92vw, 460px);
+    padding: 12px 14px 12px 18px;
+    border-radius: 12px;
+    background: #1f2937; color: #fff;
+    font-size: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    transform: translate(-50%, 16px); opacity: 0;
+    transition: transform 0.18s ease, opacity 0.18s ease;
+  }
+  .toast.show { transform: translate(-50%, 0); opacity: 1; }
+  .toast span { flex: 1; min-width: 0; }
+  .toast button { flex: none; border: none; background: none; color: #5eead4; font-size: 14px; font-weight: 700; padding: 4px 6px; cursor: pointer; }
+  :root[data-theme="dark"] .toast { background: #f3f4f6; color: #111827; }
+  :root[data-theme="dark"] .toast button { color: var(--accent); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .toast { background: #f3f4f6; color: #111827; }
+    :root:not([data-theme="light"]) .toast button { color: var(--accent); }
+  }
   .modal-bg {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.5);
@@ -318,7 +398,7 @@
   }
   .calc-toggle[aria-pressed="true"] { background: var(--card); opacity: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
   .calc-preview { min-height: 18px; margin-top: 4px; font-size: 13px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
-  .calc-preview.error { color: var(--danger); }
+  .calc-preview.error { color: var(--danger-ink); }
   .calc-pad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
   .calc-pad button {
     padding: 12px 0;
@@ -332,7 +412,7 @@
     touch-action: manipulation;
   }
   .calc-pad button:active { background: var(--bg); }
-  .calc-pad .op { color: var(--accent); }
+  .calc-pad .op { color: var(--accent-ink); }
   .calc-pad .eq { background: var(--accent); border-color: var(--accent); color: #fff; }
   .btn-row { display: flex; gap: 8px; margin-top: 20px; }
   .btn {
@@ -382,7 +462,7 @@
   .pin-dots span.on { background: var(--text); border-color: var(--text); }
   .pin-dots.shake { animation: pin-shake 0.3s; }
   @keyframes pin-shake { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
-  .pin-error { min-height: 20px; margin: 10px 0 6px; font-size: 13px; color: var(--danger); }
+  .pin-error { min-height: 20px; margin: 10px 0 6px; font-size: 13px; color: var(--danger-ink); }
   .pin-pad { display: grid; grid-template-columns: repeat(3, 72px); gap: 12px; justify-content: center; }
   .pin-pad button {
     height: 56px;
@@ -411,11 +491,11 @@
     font-size: 12px;
   }
   .setup-steps { font-size: 13px; line-height: 1.55; margin: 4px 0 8px; }
-  .setup-steps summary { font-weight: 600; color: var(--accent); cursor: pointer; }
+  .setup-steps summary { font-weight: 600; color: var(--accent-ink); cursor: pointer; }
   .setup-steps ol { padding-left: 20px; margin: 8px 0; }
   .setup-steps li { margin-bottom: 4px; }
   .sync-status { font-size: 13px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
-  .sync-status.error { color: var(--danger); }
+  .sync-status.error { color: var(--danger-ink); }
   .sync-google { padding-bottom: 14px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
   .sync-google:has(+ .sync-github[hidden]) { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
   .sync-google .custom-title { margin-top: 4px; }
@@ -551,7 +631,7 @@
   .icon-btn {
     background: none;
     border: none;
-    color: var(--danger);
+    color: var(--danger-ink);
     font-size: 14px;
     padding: 6px 8px;
   }
@@ -576,7 +656,7 @@
   .rename-sub { display: flex; align-items: center; flex-basis: 100%; margin: 0; }
   .rename-sub input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 14px; }
   .no-subs { font-size: 12px; color: var(--muted); margin: 8px 0; }
-  .details-on-btn { margin-top: 8px; padding: 4px 0; border: none; background: none; color: var(--accent); font-size: 13px; cursor: pointer; }
+  .details-on-btn { margin-top: 8px; padding: 4px 0; border: none; background: none; color: var(--accent-ink); font-size: 13px; cursor: pointer; }
   .mgr-details { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg); }
   .mgr-details .chip { background: var(--card); }
   .mgr-details-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
@@ -700,14 +780,14 @@
   .share-row .amt { font-weight: 600; font-variant-numeric: tabular-nums; }
   .share-row input { width: 120px; padding: 8px 10px; text-align: right; }
   .split-summary { margin-top: 8px; font-size: 13px; color: var(--muted); }
-  .split-summary.error { color: var(--danger); }
-  .split-tag { color: var(--accent); white-space: nowrap; }
+  .split-summary.error { color: var(--danger-ink); }
+  .split-tag { color: var(--accent-ink); white-space: nowrap; }
   .owed-sum { display: flex; gap: 8px; }
   .owed-sum > div { flex: 1; padding: 12px; border-radius: 12px; background: var(--bg); text-align: center; }
   .owed-sum .lbl { font-size: 12px; color: var(--muted); }
   .owed-sum .val { margin-top: 2px; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .pos { color: var(--income); }
-  .neg { color: var(--danger); }
+  .neg { color: var(--danger-ink); }
   .friend-row { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
   .friend-row:last-child { border-bottom: none; }
   .friend-row .avatar {
@@ -715,7 +795,7 @@
     display: flex; align-items: center; justify-content: center;
     border-radius: 50%;
     background: color-mix(in srgb, var(--accent) 16%, transparent);
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 700;
   }
   .friend-row .info { flex: 1; min-width: 0; }
@@ -725,15 +805,15 @@
   .friend-row .bal b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
   .friend-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
   .friend-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 18px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .back-btn { padding: 6px 10px; border: none; border-radius: 8px; background: var(--bg); color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .back-btn { padding: 6px 10px; border: none; border-radius: 8px; background: var(--bg); color: var(--accent-ink); font-size: 14px; font-weight: 600; cursor: pointer; }
   .friend-bal { font-size: 15px; margin-bottom: 12px; }
   .settle-dir button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
   .card-head h2 { margin: 0; }
-  .link-btn { padding: 6px 4px; border: none; background: none; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .link-btn { padding: 6px 4px; border: none; background: none; color: var(--accent-ink); font-size: 14px; font-weight: 600; cursor: pointer; }
   .friend-row .avatar.group { border-radius: 12px; font-size: 18px; }
   .friend-row .bal.muted { color: var(--muted); }
-  .group-tag { color: var(--accent); }
+  .group-tag { color: var(--accent-ink); }
   .owed-sum + .btn-row { margin-top: 12px; }
   .share-text {
     width: 100%;
@@ -787,7 +867,7 @@
   .transfer-row .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .transfer-row .arrow { color: var(--muted); padding: 0 4px; }
   .transfer-row .amt { font-weight: 600; font-variant-numeric: tabular-nums; }
-  .transfer-row .go { font-size: 12px; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .transfer-row .go { font-size: 12px; color: var(--accent-ink); font-weight: 600; white-space: nowrap; }
   .bill-field { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .bill-thumb { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; border: 1px solid var(--border); cursor: pointer; background: var(--bg); }
   .bill-field .btn.small { padding: 9px 14px; }
@@ -822,7 +902,7 @@
   .scan-loading { text-align: center; padding: 30px 10px; color: var(--muted); line-height: 1.6; }
   .scan-loading .spin { display: inline-block; font-size: 28px; animation: scanspin 1.2s linear infinite; }
   @keyframes scanspin { to { transform: rotate(360deg); } }
-  .simplify-tag { font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 10px; padding: 2px 8px; }
+  .simplify-tag { font-size: 11px; font-weight: 600; color: var(--accent-ink); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 10px; padding: 2px 8px; }
 </style>
 </head>
 <body>
@@ -951,7 +1031,8 @@
         </div>
       </div>
       <label for="category">Category</label>
-      <select id="category" required></select>
+      <div class="quick-chips" id="recentCats" aria-label="Recent categories"></div>
+      <select id="category" required style="margin-top:8px"></select>
       <label for="subcategory">Subcategory (optional)</label>
       <select id="subcategory"></select>
       <div id="detailField" hidden>
@@ -972,10 +1053,16 @@
         </div>
       </div>
       <label for="date">Date</label>
+      <div class="quick-chips" id="dateChips" style="margin:0 0 8px">
+        <button type="button" class="quick-chip" data-day="0">Today</button>
+        <button type="button" class="quick-chip" data-day="1">Yesterday</button>
+        <button type="button" class="quick-chip" data-day="2">2 days ago</button>
+      </div>
       <input type="date" id="date" required>
-      <div class="btn-row">
+      <div class="btn-row save-row">
         <button type="button" class="btn danger" id="deleteBtn" style="display:none">Delete</button>
         <button type="button" class="btn secondary" onclick="closeModal('expenseModal')">Cancel</button>
+        <button type="submit" class="btn secondary another" id="saveAnother" data-another="1">Save &amp; add another</button>
         <button type="submit" class="btn primary">Save</button>
       </div>
     </form>
@@ -1053,6 +1140,21 @@
     </div>
   </div>
 </div>
+
+<!-- In-app dialog and toast (see "Dialogs & toasts") -->
+<div class="dialog-bg" id="dialog" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogText">
+    <h3 id="dialogTitle"></h3>
+    <p id="dialogText"></p>
+    <input type="text" id="dialogInput" autocomplete="off" aria-labelledby="dialogTitle" hidden>
+    <div class="dialog-error" id="dialogError" role="alert" hidden></div>
+    <div class="btn-row">
+      <button type="button" class="btn secondary" id="dialogCancel">Cancel</button>
+      <button type="button" class="btn primary" id="dialogOk">OK</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <!-- Full-screen bill photo -->
 <div class="modal-bg bill-viewer" id="billViewer">
@@ -1158,7 +1260,7 @@
     <div class="sync-google">
       <h4 class="custom-title">Google Drive</h4>
       <p class="hint" id="googleSyncInfo" style="margin-top:6px"></p>
-      <p class="hint" style="margin-top:0"><a href="privacy.html" target="_blank" rel="noopener" style="color:var(--accent)">Privacy policy</a></p>
+      <p class="hint" style="margin-top:0"><a href="privacy.html" target="_blank" rel="noopener" style="color:var(--accent-ink)">Privacy policy</a></p>
       <div class="btn-row">
         <button type="button" class="btn primary" id="googleSignInBtn" onclick="googleSignIn()">Sign in with Google</button>
         <button type="button" class="btn secondary" id="googleSyncNow" onclick="syncNow()">Sync now</button>
@@ -1790,16 +1892,17 @@
     else if (b && b.hasAttribute('data-pin-back')) pinKey('back');
   });
   document.addEventListener('keydown', ev => {
-    if (!pinState) return;
+    if (!pinState || !document.getElementById('dialog').hidden) return; // typing in a dialog over the PIN pad
     if (/^[0-9]$/.test(ev.key)) pinKey(ev.key);
     else if (ev.key === 'Backspace') pinKey('back');
     else if (ev.key === 'Escape') closePin(null);
     else return;
     ev.preventDefault();
   });
-  document.getElementById('pinForgot').addEventListener('click', () => {
-    const typed = prompt('Forgot your PIN? Type RESET to turn off hiding. You can then set a new PIN in the menu.');
-    if ((typed || '').trim().toUpperCase() !== 'RESET') return;
+  document.getElementById('pinForgot').addEventListener('click', async () => {
+    const typed = await askText('Forgot your PIN?', { text: 'Type RESET to turn off hiding. You can then set a new PIN in the menu.',
+      placeholder: 'RESET', ok: 'Turn off hiding', danger: true });
+    if ((typed || '').toUpperCase() !== 'RESET') return;
     setPrivacy(null);
     closePin(null);
   });
@@ -2066,11 +2169,14 @@
       return;
     }
     if (!monthExpenses.length) {
-      list.innerHTML = `<div class="empty">Nothing added ${range.empty}.<br>Tap + to add income or an expense.</div>`;
+      list.innerHTML = `<div class="empty"><span class="empty-icon">🧾</span><span class="empty-title">Nothing added ${range.empty}</span>
+        Track where your money goes: add what you spend or earn.
+        <br><button class="btn primary" onclick="openAdd()">+ Add expense</button></div>`;
       return;
     }
     if (!shown.length) {
-      list.innerHTML = `<div class="empty">No transactions match “${escapeHtml(searchQuery.trim())}” ${range.empty}.</div>`;
+      list.innerHTML = `<div class="empty"><span class="empty-icon">🔍</span><span class="empty-title">No matches</span>
+        Nothing matches “${escapeHtml(searchQuery.trim())}” ${range.empty}. Try another word, or a different month.</div>`;
       return;
     }
     list.innerHTML = dayGroupsHtml(shown, highlight);
@@ -2370,7 +2476,8 @@
       return;
     }
     if (!monthExpenses.length) {
-      el.innerHTML = `<div class="empty">No ${ui.chartType === 'income' ? 'income' : 'spending'} ${periodRange().empty}.<br>Tap + to add some.</div>`;
+      el.innerHTML = `<div class="empty"><span class="empty-icon">📊</span><span class="empty-title">No ${ui.chartType === 'income' ? 'income' : 'spending'} ${periodRange().empty}</span>
+        Charts appear as soon as you add some.<br><button class="btn primary" onclick="openAdd()">+ Add expense</button></div>`;
       return;
     }
     const withSubs = ui.chartMode === 'sub';
@@ -2614,8 +2721,153 @@
     }
   });
 
-  function openModal(id) { document.getElementById(id).classList.add('open'); }
-  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+  // Sheets: marked as dialogs for screen readers; focus goes back where it came from when they close
+  const modalReturn = new Map(); // id -> element focused before it opened
+  function openModal(id) {
+    const bg = document.getElementById(id);
+    if (!bg.classList.contains('open')) modalReturn.set(id, document.activeElement);
+    bg.classList.add('open');
+    const sheet = bg.querySelector('.modal');
+    if (sheet) {
+      sheet.setAttribute('role', 'dialog');
+      sheet.setAttribute('aria-modal', 'true');
+      const title = sheet.querySelector('h3');
+      if (title) {
+        title.id = title.id || id + 'Title';
+        sheet.setAttribute('aria-labelledby', title.id);
+      }
+    }
+  }
+
+  // ---------- Dialogs & toasts ----------
+  // The app's own versions of the browser's alert / confirm / prompt (which look like system warnings on
+  // phones), and toasts: a short message at the bottom, optionally with an Undo.
+  let dialogQueue = Promise.resolve();
+
+  // opts: { title, text, input: { value, placeholder, inputmode }, ok, cancel (false = no Cancel), danger,
+  //         validate(value) -> problem to show, or '' }
+  // Resolves true / false, or with an input, the trimmed text / null
+  function showDialog(opts) {
+    const run = () => new Promise(resolve => {
+      const bg = document.getElementById('dialog');
+      const title = document.getElementById('dialogTitle'), text = document.getElementById('dialogText');
+      const input = document.getElementById('dialogInput'), error = document.getElementById('dialogError');
+      const ok = document.getElementById('dialogOk'), cancel = document.getElementById('dialogCancel');
+      const returnTo = document.activeElement;
+      title.textContent = opts.title || '';
+      title.hidden = !opts.title;
+      text.textContent = opts.text || '';
+      text.hidden = !opts.text;
+      input.hidden = !opts.input;
+      if (opts.input) {
+        input.value = opts.input.value || '';
+        input.placeholder = opts.input.placeholder || '';
+        input.inputMode = opts.input.inputmode || 'text';
+      }
+      error.hidden = true;
+      ok.textContent = opts.ok || 'OK';
+      ok.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
+      cancel.hidden = opts.cancel === false;
+      cancel.textContent = typeof opts.cancel === 'string' ? opts.cancel : 'Cancel';
+      bg.hidden = false;
+      const finish = value => {
+        bg.hidden = true;
+        bg.onclick = bg.onkeydown = ok.onclick = cancel.onclick = null;
+        if (returnTo && returnTo.focus) returnTo.focus();
+        resolve(value);
+      };
+      const submit = () => {
+        if (!opts.input) return finish(true);
+        const value = input.value.trim();
+        const problem = opts.validate ? opts.validate(value) : '';
+        if (problem) {
+          error.textContent = problem;
+          error.hidden = false;
+          return input.focus();
+        }
+        finish(value);
+      };
+      const dismiss = () => finish(opts.input ? null : opts.cancel === false);
+      ok.onclick = submit;
+      cancel.onclick = dismiss;
+      bg.onclick = ev => { if (ev.target === bg) dismiss(); };
+      bg.onkeydown = ev => {
+        if (ev.key === 'Escape') { ev.preventDefault(); dismiss(); }
+        else if (ev.key === 'Enter' && ev.target === input) { ev.preventDefault(); submit(); }
+        else if (ev.key === 'Tab') {
+          // Keep focus inside the dialog
+          const stops = [input, cancel, ok].filter(el => !el.hidden);
+          const i = stops.indexOf(document.activeElement);
+          ev.preventDefault();
+          stops[(i + (ev.shiftKey ? -1 : 1) + stops.length) % stops.length].focus();
+        }
+      };
+      setTimeout(() => (opts.input ? input : ok).focus(), 30);
+    });
+    const shown = dialogQueue.then(run); // one at a time
+    dialogQueue = shown.catch(() => {});
+    return shown;
+  }
+
+  const askConfirm = (text, opts = {}) => showDialog({ text, ...opts });
+  const askText = (title, opts = {}) => showDialog({ title, input: opts, ...opts });
+  const showMessage = (text, opts = {}) => showDialog({ text, cancel: false, ...opts });
+
+  // A short buzz on phones that support it (Android); nothing elsewhere
+  function haptic() {
+    if (navigator.vibrate) navigator.vibrate(12);
+  }
+
+  let toastTimer = null;
+  let toastEnd = null; // runs when the current toast goes away
+
+  // action: { label, run } (e.g. Undo); onExpire runs if the toast goes away without the action
+  function toast(text, { action, onExpire, duration } = {}) {
+    closeToast();
+    const el = document.getElementById('toast');
+    el.innerHTML = '<span></span>' + (action ? '<button type="button"></button>' : '');
+    el.firstChild.textContent = text;
+    let acted = false;
+    if (action) {
+      el.lastChild.textContent = action.label;
+      el.lastChild.onclick = () => {
+        acted = true;
+        closeToast();
+        action.run();
+      };
+    }
+    el.hidden = false;
+    requestAnimationFrame(() => el.classList.add('show'));
+    toastEnd = () => { if (!acted && onExpire) onExpire(); };
+    toastTimer = setTimeout(closeToast, duration || (action ? 6000 : 2500));
+  }
+
+  function closeToast() {
+    clearTimeout(toastTimer);
+    const end = toastEnd;
+    toastEnd = null;
+    const el = document.getElementById('toast');
+    el.classList.remove('show');
+    el.hidden = true;
+    if (end) end();
+  }
+  // Leaving the app: finish what a toast was holding back (e.g. deleting a photo for good)
+  window.addEventListener('pagehide', closeToast);
+  function closeModal(id) {
+    const bg = document.getElementById(id);
+    if (!bg.classList.contains('open')) return;
+    bg.classList.remove('open');
+    const back = modalReturn.get(id);
+    modalReturn.delete(id);
+    if (back && back.focus && document.contains(back)) back.focus();
+  }
+  // Escape closes the sheet on top (unless a dialog over it is handling the key)
+  document.addEventListener('keydown', ev => {
+    if (ev.key !== 'Escape' || !document.getElementById('dialog').hidden) return;
+    const open = [...document.querySelectorAll('.modal-bg.open')];
+    const top = open[open.length - 1];
+    if (top && top.id !== 'pinModal') { ev.preventDefault(); closeModal(top.id); }
+  });
 
   // ---------- Add / edit expense ----------
 
@@ -2736,6 +2988,47 @@
     fillDetailOptions(category, detail);
   }
 
+  // Up to 6 categories of this type, most recently used first, as one-tap chips above the list
+  function renderRecentCats() {
+    const seen = new Set(), recent = [];
+    [...expenses].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).forEach(e => {
+      const c = typeOf(e) === entryType && findCategory(e.category);
+      if (c && typeOf(c) === entryType && !seen.has(c.name) && recent.length < 6) { seen.add(c.name); recent.push(c.name); }
+    });
+    const el = document.getElementById('recentCats');
+    const current = document.getElementById('category').value;
+    el.hidden = !recent.length;
+    el.innerHTML = recent.map(n => `<button type="button" class="quick-chip${n === current ? ' on' : ''}" data-cat="${escapeHtml(n)}">${escapeHtml(iconFor(n))} ${escapeHtml(n)}</button>`).join('');
+  }
+
+  document.getElementById('recentCats').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-cat]');
+    if (!b) return;
+    const sel = document.getElementById('category');
+    sel.value = b.dataset.cat;
+    sel.dispatchEvent(new Event('change'));
+  });
+
+  // Today / Yesterday / 2 days ago, lit up when the date matches
+  function renderDateChips() {
+    const date = document.getElementById('date').value;
+    document.querySelectorAll('#dateChips [data-day]').forEach(b => b.classList.toggle('on', daysAgoISO(Number(b.dataset.day)) === date));
+  }
+
+  function daysAgoISO(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  document.getElementById('dateChips').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-day]');
+    if (!b) return;
+    document.getElementById('date').value = daysAgoISO(Number(b.dataset.day));
+    renderDateChips();
+  });
+  document.getElementById('date').addEventListener('input', renderDateChips);
+
   function fillCategoryOptions(selected) {
     // Keep an old entry's category selectable even if it was deleted from the list
     const names = categories.filter(c => typeOf(c) === entryType).map(c => c.name);
@@ -2745,6 +3038,7 @@
       names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(iconFor(n))} ${escapeHtml(n)}</option>`).join('') +
       `<option value="${ADD_NEW}">➕ Add new category…</option>`;
     document.getElementById('category').value = selected || '';
+    renderRecentCats();
   }
 
   function fillSubcategoryOptions(category, selected) {
@@ -2782,6 +3076,8 @@
     setEntryType('expense');
     updateCalc();
     document.getElementById('deleteBtn').style.display = 'none';
+    document.getElementById('saveAnother').hidden = false;
+    renderDateChips();
     openModal('expenseModal');
     setTimeout(() => document.getElementById('amount').focus(), 50);
   }
@@ -2804,22 +3100,23 @@
     document.getElementById('note').value = e.note;
     document.getElementById('date').value = e.date;
     document.getElementById('deleteBtn').style.display = '';
+    document.getElementById('saveAnother').hidden = true;
+    renderDateChips();
     openModal('expenseModal');
   }
 
-  document.getElementById('category').addEventListener('change', ev => {
+  document.getElementById('category').addEventListener('change', async ev => {
     let category = ev.target.value;
     if (category === ADD_NEW) {
-      category = addCategory(prompt(`New ${entryType} category name:`), '', null, entryType) || '';
-      const cat = findCategory(category);
-      if (cat && typeOf(cat) !== entryType) {
-        alert(`"${cat.name}" already exists as an ${typeOf(cat)} category.`);
-        category = '';
-      }
+      const other = name => { const c = findCategory(name); return c && typeOf(c) !== entryType ? c : null; };
+      const name = await askText(`New ${entryType} category`, { placeholder: entryType === 'income' ? 'e.g. Salary' : 'e.g. Food', ok: 'Add',
+        validate: v => (other(v) ? `"${other(v).name}" already exists as an ${typeOf(other(v))} category.` : '') });
+      category = addCategory(name, '', null, entryType) || '';
       fillCategoryOptions(category);
     }
     fillSubcategoryOptions(category, '');
     fillDetailOptions(category, '');
+    renderRecentCats();
   });
 
   document.getElementById('entryTypeToggle').addEventListener('click', ev => {
@@ -2828,17 +3125,17 @@
     if (b && b.dataset.type !== entryType) setEntryType(b.dataset.type);
   });
 
-  document.getElementById('subcategory').addEventListener('change', ev => {
+  document.getElementById('subcategory').addEventListener('change', async ev => {
     if (ev.target.value !== ADD_NEW) return;
     const category = document.getElementById('category').value;
-    const sub = addSubcategory(category, prompt('New subcategory for ' + category + ':')) || '';
+    const sub = addSubcategory(category, await askText(`New subcategory for ${category}`, { placeholder: 'e.g. Groceries', ok: 'Add' })) || '';
     fillSubcategoryOptions(category, sub);
   });
 
-  document.getElementById('detail').addEventListener('change', ev => {
+  document.getElementById('detail').addEventListener('change', async ev => {
     if (ev.target.value !== ADD_NEW) return;
     const category = document.getElementById('category').value;
-    const detail = addDetail(category, prompt(`New thing to track under ${category} (e.g. Food, Travel, Stay):`)) || '';
+    const detail = addDetail(category, await askText(`New thing to track under ${category}`, { placeholder: 'e.g. Food, Travel, Stay', ok: 'Add' })) || '';
     fillDetailOptions(category, detail);
   });
 
@@ -2896,6 +3193,16 @@
     revealDate(data.date);
     closeModal('expenseModal');
     render();
+    haptic();
+    toast(editing ? 'Changes saved' : `${entryType === 'income' ? 'Income' : 'Expense'} added`);
+    // Save & add another: a fresh form, same type and date
+    if (!editing && ev.submitter && ev.submitter.dataset.another) {
+      const type = entryType, date = data.date;
+      openAdd();
+      if (type !== 'expense') setEntryType(type);
+      document.getElementById('date').value = date;
+      renderDateChips();
+    }
   });
 
   // Make sure a saved entry is on screen: jump to its month unless the chosen period already shows it
@@ -2910,13 +3217,18 @@
 
   document.getElementById('deleteBtn').addEventListener('click', () => {
     if (split.cloudBill) return deleteCloudBill();
-    if (!editingId || !confirm(`Delete this ${entryType}?`)) return;
-    const gone = expenses.find(x => x.id === editingId);
-    if (gone && gone.bill) forgetBill(gone.bill.id);
-    expenses = expenses.filter(x => x.id !== editingId);
+    const gone = editingId && expenses.find(x => x.id === editingId);
+    if (!gone) return;
+    expenses = expenses.filter(x => x !== gone);
     saveExpenses();
     closeModal('expenseModal');
     render();
+    haptic();
+    // Undo puts it back; only once the chance has passed does its bill photo go for good
+    toast(`${typeOf(gone) === 'income' ? 'Income' : 'Expense'} deleted`, {
+      action: { label: 'Undo', run: () => { expenses.push(gone); saveExpenses(); render(); } },
+      onExpire: () => { if (gone.bill) forgetBill(gone.bill.id); },
+    });
   });
 
   // ---------- Split with friends ----------
@@ -3120,7 +3432,7 @@
     }
   }
 
-  document.getElementById('splitGroup').addEventListener('change', ev => {
+  document.getElementById('splitGroup').addEventListener('change', async ev => {
     let id = ev.target.value;
     if (id.startsWith('cloud:')) {
       applyCloudGroup(id.slice(6));
@@ -3128,7 +3440,7 @@
     }
     if (split.cloud) Object.assign(split, { cloud: '', friends: [], paidBy: '', custom: {} }); // member ids mean nothing here
     if (id === ADD_NEW) {
-      const name = (prompt('New group name (the friends added below become its members):') || '').trim();
+      const name = await askText('New group', { text: 'The friends added to this bill become its members.', placeholder: 'e.g. Goa trip', ok: 'Create' }) || '';
       id = '';
       if (name && groupNamed(name)) id = groupNamed(name).id; // already exists: just pick it
       else if (name) {
@@ -3557,15 +3869,18 @@
     if (!splitNav.group) splitNav = { group: null, friend };
     closeModal('settleModal');
     render();
+    toast(x ? 'Payment updated' : 'Payment recorded');
   });
 
   document.getElementById('settleDeleteBtn').addEventListener('click', () => {
     if (settleCloud) return deleteCloudPayment();
-    if (!settleId || !confirm('Delete this payment?')) return;
-    settlements = settlements.filter(s => s.id !== settleId);
+    const gone = settleId && settlements.find(s => s.id === settleId);
+    if (!gone) return;
+    settlements = settlements.filter(s => s !== gone);
     saveSettlements();
     closeModal('settleModal');
     render();
+    toast('Payment deleted', { action: { label: 'Undo', run: () => { settlements.push(gone); saveSettlements(); render(); } } });
   });
 
   // ---- Groups ----
@@ -3637,7 +3952,7 @@
     if (groupEdit.cloud) return saveCloudGroupForm(name);
     const g = findGroup(groupEdit.id);
     const clash = groupNamed(name);
-    if (clash && clash !== g) return alert(`There's already a group called "${clash.name}".`);
+    if (clash && clash !== g) return showMessage(`There's already a group called "${clash.name}".`);
     const simplify = document.getElementById('groupSimplify').checked;
     if (g) Object.assign(g, { name, members: groupEdit.members, simplify });
     else groups.push({ id: newId(), name, members: groupEdit.members, simplify, createdAt: Date.now() });
@@ -3650,12 +3965,18 @@
   document.getElementById('groupDeleteBtn').addEventListener('click', () => {
     if (groupEdit.cloud) return leaveOrDeleteCloudGroup();
     const g = findGroup(groupEdit.id);
-    if (!g || !confirm(`Delete the group "${g.name}"? Its bills and payments stay, just not grouped.`)) return;
-    groups = groups.filter(x => x.id !== g.id);
+    if (!g) return;
+    groups = groups.filter(x => x !== g);
     saveGroups();
     splitNav = { group: null, friend: null };
     closeModal('groupModal');
     render();
+    toast(`Group "${g.name}" deleted. Its bills stay.`, { action: { label: 'Undo', run: () => {
+      groups.push(g);
+      saveGroups();
+      splitNav = { group: g.id, friend: null };
+      render();
+    } } });
   });
 
   // ---------- Sharing a split summary ----------
@@ -3791,7 +4112,7 @@
   async function openShare() {
     let me = localStorage.getItem(MY_NAME_KEY);
     if (!me) {
-      me = (prompt('Your name, so friends know who “you” are in the summary:') || '').trim();
+      me = await askText('Your name', { text: 'So friends know who “you” are in the summary.', placeholder: 'e.g. Rohan', ok: 'Continue' }) || '';
       if (!me) return;
       localStorage.setItem(MY_NAME_KEY, me);
     }
@@ -3985,7 +4306,7 @@
   }
 
   async function signOutCloud() {
-    if (!confirm('Sign out of shared groups on this device? Your expenses stay; shared bills stop updating here until you sign in again.')) return;
+    if (!(await askConfirm('Your expenses stay; shared bills stop updating here until you sign in again.', { title: 'Sign out of shared groups?', ok: 'Sign out' }))) return;
     localStorage.removeItem(CLOUD_KEY);
     await cloud.fb.signOut(cloud.auth);
   }
@@ -4104,7 +4425,7 @@
   function cloudWrite(promise, refused = "That change wasn't allowed. You may no longer be in this group.") {
     return promise.catch(err => {
       cloudError(err);
-      alert(err && err.code === 'permission-denied' ? refused
+      showMessage(err && err.code === 'permission-denied' ? refused
         : "Couldn't save that to the shared group: " + ((err && err.message) || err));
     });
   }
@@ -4266,7 +4587,7 @@
         <div class="cloud-account"><span>Signed in as ${escapeHtml(cloud.user.email || cloud.user.name)}</span>
           <button class="link-btn" data-action="cloud-signout">Sign out</button></div>`;
     } else if (cloud.loading && !cloud.fb && localStorage.getItem(CLOUD_KEY)) {
-      body = '<p class="hint" style="margin-top:4px">Connecting…</p>';
+      body = '<div aria-label="Loading shared groups">' + '<div class="skeleton-row"><i class="sk-a"></i><i class="sk-b"></i><i class="sk-c"></i></div>'.repeat(2) + '</div>';
     } else {
       body = `<p class="hint" style="margin-top:4px">Split with friends live: everyone in a group sees the same bills and can add them,
           and each person's share lands in their own expenses.${cloud.failed ? ' <b>Couldn\'t connect. Are you offline?</b>' : ''}</p>
@@ -4373,7 +4694,7 @@
     const act = action && action.dataset.action;
     if (act === 'cloud-signin') {
       signInCloud().catch(err => {
-        if (err && err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') alert("Couldn't sign in: " + (err.message || err));
+        if (err && err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') showMessage("Couldn't sign in: " + (err.message || err));
         cloudChanged();
       });
     } else if (act === 'cloud-signout') signOutCloud();
@@ -4437,16 +4758,18 @@
     renderSplitTab();
   }
 
-  function leaveOrDeleteCloudGroup() {
+  async function leaveOrDeleteCloudGroup() {
     const g = cloud.groups.get(groupEdit.cloud);
     if (!g) return;
     const { doc, updateDoc, deleteDoc, arrayRemove } = cloud.fb;
     const ref = doc(cloud.db, 'groups', g.id);
     if (g.createdBy === cloud.user.uid) {
-      if (!confirm(`Delete "${g.name}" for everyone? Bills already in people's expenses stay there as normal expenses.`)) return;
+      if (!(await askConfirm("Bills already in people's expenses stay there as normal expenses. This can't be undone.",
+        { title: `Delete "${g.name}" for everyone?`, ok: 'Delete group', danger: true }))) return;
       cloudWrite(deleteDoc(ref));
     } else {
-      if (!confirm(`Leave "${g.name}"? Your shares of its bills stay in your expenses, and the others keep the group.`)) return;
+      if (!(await askConfirm('Your shares of its bills stay in your expenses, and the others keep the group. You can only rejoin with a new invite.',
+        { title: `Leave "${g.name}"?`, ok: 'Leave group', danger: true }))) return;
       cloudWrite(updateDoc(ref, { memberUids: arrayRemove(cloud.user.uid), [`members.${myMemberId(g)}.left`]: true, updatedAt: Date.now() }));
     }
     splitNav = { group: null, friend: null, cloud: null };
@@ -4454,10 +4777,10 @@
     renderSplitTab();
   }
 
-  function claimCloudMember(gid, pid) {
+  async function claimCloudMember(gid, pid) {
     const g = cloud.groups.get(gid);
     if (!g || !g.members[pid] || g.members[pid].uid) return;
-    if (!confirm(`Are you ${g.members[pid].name}? Their bills in this group become yours.`)) return;
+    if (!(await askConfirm('Their bills in this group become yours.', { title: `Are you ${g.members[pid].name}?`, ok: "Yes, that's me" }))) return;
     const { doc, updateDoc, deleteField } = cloud.fb;
     cloudWrite(updateDoc(doc(cloud.db, 'groups', gid), {
       [`members.${pid}.uid`]: cloud.user.uid,
@@ -4525,7 +4848,7 @@
       btn.disabled = false;
       btn.textContent = cloud.user ? 'Join' : 'Sign in & join';
       if (err && (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request')) return;
-      alert(err && (err.code === 'permission-denied' || err.code === 'not-found')
+      showMessage(err && (err.code === 'permission-denied' || err.code === 'not-found')
         ? "This invite link doesn't work any more. Ask for a new one."
         : "Couldn't join: " + ((err && err.message) || err));
     }
@@ -4569,6 +4892,8 @@
     document.getElementById('note').value = b.title || '';
     document.getElementById('date').value = b.date;
     document.getElementById('deleteBtn').style.display = '';
+    document.getElementById('saveAnother').hidden = true;
+    renderDateChips();
     openModal('expenseModal');
     return true;
   }
@@ -4576,7 +4901,7 @@
   // Save the expense form's split to its shared group; your share also goes straight into your expenses
   function saveCloudBill(data, r) {
     const g = cloud.groups.get(split.cloud);
-    if (!g || !cloud.user) return alert("Not connected to shared groups. Check you're online and signed in (Split tab).");
+    if (!g || !cloud.user) return showMessage("Not connected to shared groups. Check you're online and signed in (Split tab).");
     const me = myMemberId(g);
     const { doc, collection, setDoc, updateDoc } = cloud.fb;
     let detail = hasDetails(data.category) ? document.getElementById('detail').value : '';
@@ -4613,14 +4938,16 @@
   }
 
   function deleteCloudBill() {
-    if (!confirm('Delete this bill for everyone in the group?')) return;
     const { doc, updateDoc } = cloud.fb;
-    cloudWrite(updateDoc(doc(cloud.db, 'groups', split.cloud, 'bills', split.cloudBill),
-      { deleted: true, updatedAt: Date.now(), updatedBy: cloud.user.uid }));
+    const ref = doc(cloud.db, 'groups', split.cloud, 'bills', split.cloudBill);
+    const mark = deleted => cloudWrite(updateDoc(ref, { deleted, updatedAt: Date.now(), updatedBy: cloud.user.uid }));
+    mark(true);
     expenses = expenses.filter(e => e.id !== sharedEntryId(split.cloud, split.cloudBill));
     saveExpenses();
     closeModal('expenseModal');
     render();
+    // Undo brings it back for everyone; your share returns to your expenses with the bill
+    toast('Bill deleted for everyone in the group', { action: { label: 'Undo', run: () => mark(false) } });
   }
 
   // ---- Shared payments (settle up) ----
@@ -4632,7 +4959,7 @@
     const p = pid && cloud.payments.get(gid) && cloud.payments.get(gid).get(pid);
     const name = id => cloudMemberName(gid, id);
     if (p && p.from !== t.me && p.to !== t.me) {
-      return alert(`${name(p.from)} paid ${name(p.to)} ${formatMoney(p.amount)} on ${fmtDate(p.date)}. Only they can change it.`);
+      return showMessage(`${name(p.from)} paid ${name(p.to)} ${formatMoney(p.amount)} on ${fmtDate(p.date)}. Only they can change it.`);
     }
     const other = p ? (p.from === t.me ? p.to : p.from) : memberId;
     const row = t.rows.find(r => r.id === other);
@@ -4668,15 +4995,18 @@
     else cloudWrite(setDoc(doc(collection(cloud.db, 'groups', g.id, 'payments')), { ...fields, createdAt: now, createdBy: uid, deleted: false }));
     closeModal('settleModal');
     renderSplitTab();
+    toast(settleCloud.pid ? 'Payment updated' : 'Payment recorded');
   }
 
   function deleteCloudPayment() {
-    if (!settleCloud.pid || !confirm('Delete this payment for everyone in the group?')) return;
+    if (!settleCloud.pid) return;
     const { doc, updateDoc } = cloud.fb;
-    cloudWrite(updateDoc(doc(cloud.db, 'groups', settleCloud.gid, 'payments', settleCloud.pid),
-      { deleted: true, updatedAt: Date.now(), updatedBy: cloud.user.uid }));
+    const ref = doc(cloud.db, 'groups', settleCloud.gid, 'payments', settleCloud.pid);
+    const mark = deleted => cloudWrite(updateDoc(ref, { deleted, updatedAt: Date.now(), updatedBy: cloud.user.uid }));
+    mark(true);
     closeModal('settleModal');
     renderSplitTab();
+    toast('Payment deleted for everyone in the group', { action: { label: 'Undo', run: () => mark(false) } });
   }
 
   // ---------- Simplify debts ----------
@@ -4758,21 +5088,22 @@
   }
 
   // Tapped a suggested payment: your own opens Settle up ready to go; between two others, record it after a check
-  function recordTransfer(i) {
+  async function recordTransfer(i) {
     const ctx = transferCtx, x = ctx && ctx.list[i];
     if (!x) return;
     if (ctx.cloud) {
       if (x.from === ctx.me || x.to === ctx.me) return openCloudPayment(ctx.cloud, x.from === ctx.me ? x.to : x.from);
       const g = cloud.groups.get(ctx.cloud), name = id => cloudMemberName(ctx.cloud, id);
-      if (!g || !confirm(`Record that ${name(x.from)} paid ${name(x.to)} ${formatMoney(x.amount)}?`)) return;
+      if (!g || !(await askConfirm(`${name(x.from)} paid ${name(x.to)} ${formatMoney(x.amount)}.`, { title: 'Record this payment?', ok: 'Record payment' }))) return;
       const { doc, collection, setDoc } = cloud.fb;
       const now = Date.now();
       cloudWrite(setDoc(doc(collection(cloud.db, 'groups', g.id, 'payments')), { from: x.from, to: x.to, amount: x.amount,
         date: todayISO(), note: '', createdAt: now, createdBy: cloud.user.uid, updatedAt: now, updatedBy: cloud.user.uid, deleted: false }));
+      toast('Payment recorded');
       return;
     }
     if (x.from === '' || x.to === '') return openSettle(x.from === '' ? x.toName : x.fromName, null, ctx.local);
-    if (!confirm(`Record that ${x.fromName} paid ${x.toName} ${formatMoney(x.amount)}?`)) return;
+    if (!(await askConfirm(`${x.fromName} paid ${x.toName} ${formatMoney(x.amount)}.`, { title: 'Record this payment?', ok: 'Record payment' }))) return;
     // This device only keeps what you and each friend owe each other, so a payment between two friends is
     // kept as the payer settling with you and you settling with the receiver: their balances come out right
     const note = `${x.fromName} paid ${x.toName} directly`, now = Date.now();
@@ -4781,6 +5112,7 @@
       { id: newId(), createdAt: now + 1, friend: x.toName, amount: x.amount, dir: 'out', date: todayISO(), note, group: ctx.local });
     saveSettlements();
     render();
+    toast('Payment recorded');
   }
 
   // ---------- Group spending report ----------
@@ -4979,12 +5311,14 @@
       <button class="link-btn" data-action="my-upi">${mine ? 'Edit' : 'Add'}</button></div>`;
   }
 
-  function editMyUpi() {
+  async function editMyUpi() {
     const now = localStorage.getItem(MY_UPI_KEY) || '';
-    const entered = prompt('Your UPI ID (e.g. name@okaxis). Friends in your shared groups will see it, and it’s added to summaries you share. Leave empty to remove.', now);
-    if (entered === null) return;
-    const vpa = entered.trim();
-    if (vpa && !isUpiId(vpa)) return alert('That doesn’t look like a UPI ID. It should look like name@bank.');
+    const vpa = await askText('Your UPI ID', {
+      text: 'Friends in your shared groups will see it, and it’s added to summaries you share. Leave empty to remove it.',
+      value: now, placeholder: 'name@okaxis', inputmode: 'email', ok: 'Save',
+      validate: v => (v && !isUpiId(v) ? 'That doesn’t look like a UPI ID. It should look like name@bank.' : ''),
+    });
+    if (vpa === null) return;
     if (vpa) localStorage.setItem(MY_UPI_KEY, vpa);
     else localStorage.removeItem(MY_UPI_KEY);
     // Shared groups: publish the new one, or take it down
@@ -5048,12 +5382,13 @@
     return detail;
   }
 
-  function setDetailsOn(index, on) {
+  async function setDetailsOn(index, on) {
     const cat = categories[index];
     if (!on) {
       const used = expenses.filter(e => e.category === cat.name && e.detail).length;
-      if (used && !confirm(`Stop tracking what you spent on for ${cat.name}?\n\n${used} entr${used === 1 ? 'y has' : 'ies have'} it set. ` +
-        `They keep it (just hidden), and it all comes back if you turn this on again.`)) return;
+      if (used && !(await askConfirm(`${used} entr${used === 1 ? 'y has' : 'ies have'} it set. ` +
+        `They keep it (just hidden), and it all comes back if you turn this on again.`,
+        { title: `Stop tracking what you spent on for ${cat.name}?`, ok: 'Stop tracking' }))) return;
     }
     cat.detailsOn = on;
     cat.details = cat.details || [];
@@ -5071,7 +5406,7 @@
     if (!newName || newName === oldName || newName === ADD_NEW) return newName === oldName;
     const clash = cat.details.find((d, j) => j !== k && d.toLowerCase() === newName.toLowerCase());
     if (clash) {
-      alert(`${cat.name} already has "${clash}".`);
+      toast(`${cat.name} already has "${clash}".`);
       return false;
     }
     const lower = v => String(v || '').toLowerCase();
@@ -5085,24 +5420,22 @@
     return true;
   }
 
-  function deleteDetail(index, k) {
+  async function deleteDetail(index, k) {
     const cat = categories[index];
     const detail = cat.details[k];
     const used = expenses.filter(e => e.category === cat.name && e.detail === detail).length;
-    const msg = `Remove "${detail}" from ${cat.name}?` +
-      (used ? `\n\n${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still show under "${detail}".` : '');
-    if (!confirm(msg)) return;
+    const msg = used ? `${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still show under "${detail}".` : '';
+    if (!(await askConfirm(msg, { title: `Remove "${detail}" from ${cat.name}?`, ok: 'Remove', danger: true }))) return;
     cat.details.splice(k, 1);
     saveCategories();
     renderCategoryManager();
   }
 
-  function deleteCategory(index) {
+  async function deleteCategory(index) {
     const cat = categories[index];
     const used = expenses.filter(e => e.category === cat.name).length;
-    const msg = `Delete category "${cat.name}"` + (cat.subs.length ? ' and its subcategories' : '') + '?' +
-      (used ? `\n\n${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still count under "${cat.name}" in totals.` : '');
-    if (!confirm(msg)) return;
+    const msg = used ? `${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still count under "${cat.name}" in totals.` : '';
+    if (!(await askConfirm(msg, { title: `Delete "${cat.name}"${cat.subs.length ? ' and its subcategories' : ''}?`, ok: 'Delete', danger: true }))) return;
     categories.splice(index, 1);
     openPicker = openEmoji = renamingCat = renamingSub = renamingDetail = null; // indices shift
     saveCategories();
@@ -5118,7 +5451,7 @@
     if (!newName || newName === oldName || newName === ADD_NEW) return newName === oldName;
     const clash = findCategory(newName);
     if (clash && clash !== cat) {
-      alert(`"${clash.name}" already exists as an ${typeOf(clash)} category.`);
+      toast(`"${clash.name}" already exists as an ${typeOf(clash)} category.`);
       return false;
     }
     const same = e => String(e.category).toLowerCase() === oldName.toLowerCase();
@@ -5139,7 +5472,7 @@
     if (!newName || newName === oldName || newName === ADD_NEW) return newName === oldName;
     const clash = cat.subs.find((s, j) => j !== subIndex && s.toLowerCase() === newName.toLowerCase());
     if (clash) {
-      alert(`${cat.name} already has a subcategory called "${clash}".`);
+      toast(`${cat.name} already has a subcategory called "${clash}".`);
       return false;
     }
     const lower = v => String(v || '').toLowerCase();
@@ -5153,13 +5486,12 @@
     return true;
   }
 
-  function deleteSubcategory(index, subIndex) {
+  async function deleteSubcategory(index, subIndex) {
     const cat = categories[index];
     const sub = cat.subs[subIndex];
     const used = expenses.filter(e => e.category === cat.name && e.subcategory === sub).length;
-    const msg = `Delete subcategory "${sub}" from ${cat.name}?` +
-      (used ? `\n\n${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still show under "${sub}".` : '');
-    if (!confirm(msg)) return;
+    const msg = used ? `${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still show under "${sub}".` : '';
+    if (!(await askConfirm(msg, { title: `Delete "${sub}" from ${cat.name}?`, ok: 'Delete', danger: true }))) return;
     cat.subs.splice(subIndex, 1);
     saveCategories();
     renderCategoryManager();
@@ -5334,7 +5666,7 @@
     const nameInput = document.getElementById('newCatName');
     const existing = findCategory(nameInput.value.trim());
     if (existing) {
-      alert(`"${existing.name}" already exists as an ${typeOf(existing)} category.`);
+      showMessage(`"${existing.name}" already exists as an ${typeOf(existing)} category.`);
       return;
     }
     if (addCategory(nameInput.value, newCatIcon, newCatColor, newCatType)) {
@@ -5872,7 +6204,7 @@ If the photo is not a bill or receipt, set "readable" to false.`;
       const bill = { id: 'b' + randomId(16), type: 'image/jpeg', w: billForm.w, h: billForm.h, size: billForm.blob.size };
       billPut(bill.id, { blob: billForm.blob, uploaded: false })
         .then(() => { if (syncConfig && navigator.onLine !== false) syncBills(); })
-        .catch(() => alert("Couldn't keep the photo on this device (storage full?)."));
+        .catch(() => showMessage("Couldn't keep the photo on this device. Your phone's storage may be full."));
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
       if (before) forgetBill(before.id);
       return bill;
@@ -6098,10 +6430,10 @@ If the photo is not a bill or receipt, set "readable" to false.`;
         saveCategories();
 
         render();
-        alert(`Imported ${added.length} new entr${added.length === 1 ? 'y' : 'ies'}.`);
+        toast(`Imported ${added.length} new entr${added.length === 1 ? 'y' : 'ies'}`);
         closeModal('settingsModal');
       } catch {
-        alert('That file does not look like a Money Manager backup.');
+        showMessage('That file does not look like a Money Manager backup.');
       }
       ev.target.value = '';
     };
@@ -6337,9 +6669,10 @@ If the photo is not a bill or receipt, set "readable" to false.`;
     await syncNow();
   });
 
-  document.getElementById('syncDisconnect').addEventListener('click', () => {
+  document.getElementById('syncDisconnect').addEventListener('click', async () => {
     const where = syncConfig.provider === 'google' ? 'in your Google Drive' : 'on GitHub';
-    if (!confirm(`Turn off sync on this device?\n\nYour data stays in this browser, and the copy ${where} is not deleted.`)) return;
+    if (!(await askConfirm(`Your data stays in this browser, and the copy ${where} is not deleted.`,
+      { title: 'Turn off sync on this device?', ok: 'Turn off sync' }))) return;
     syncConfig = null;
     clearTimeout(syncTimer);
     localStorage.removeItem(SYNC_KEY);
