@@ -753,6 +753,13 @@
   .claim-box { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--bg); font-size: 14px; }
   .claim-box .chips { margin: 8px 0 0; }
   .claim-box .chip { cursor: pointer; padding: 6px 14px; background: var(--card); }
+  .upi-box { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--bg); }
+  .upi-box label { margin-top: 0; }
+  .upi-box input { background: var(--card); }
+  .upi-btn { display: block; margin-top: 10px; text-align: center; text-decoration: none; }
+  .upi-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+  .upi-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .upi-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -918,6 +925,13 @@
       </div>
       <label for="settleAmount">Amount</label>
       <input class="big" type="text" id="settleAmount" inputmode="decimal" autocomplete="off" required placeholder="0">
+      <div class="upi-box" id="upiBox" hidden>
+        <label for="upiId" id="upiLabel">Their UPI ID</label>
+        <input type="text" id="upiId" placeholder="name@okaxis" autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="email">
+        <div class="hint" id="upiNote" style="margin-top:6px"></div>
+        <a class="btn primary upi-btn" id="upiPay" href="#">Pay with UPI</a>
+        <p class="hint" style="margin-top:8px">Opens GPay (or another UPI app) with the amount filled in. You confirm with your UPI PIN there; then come back and tap Save to record it.</p>
+      </div>
       <label for="settleDate">Date</label>
       <input type="date" id="settleDate" required>
       <label for="settleNote">Note (optional)</label>
@@ -3178,7 +3192,8 @@
       if (cg) return renderCloudGroupView(el, cg);
       if (cloud.user) {
         el.innerHTML = `<div class="card"><div class="friend-head"><button class="back-btn" data-action="split-back">‹ Split</button>
-          <h2>☁️ Loading…</h2></div><p class="hint">Waiting for the shared group. If it doesn't appear, you may no longer be in it.</p></div>`;
+          <h2>☁️ Loading…</h2></div><p class="hint">Waiting for the shared group. If it doesn't appear, you may no longer be in it.</p>
+          ${cloud.problem ? `<p class="hint"><b>Problem reaching Firebase:</b> ${escapeHtml(cloud.problem)}. Retrying…</p>` : ''}</div>`;
         return;
       }
       splitNav.cloud = null;
@@ -3193,7 +3208,7 @@
     splitNav = { group: null, friend: null, cloud: null };
 
     if (!friends.length && !groups.length) {
-      el.innerHTML = cloudCardHtml() + `<div class="empty">👥 No bills on this device yet.<br>When adding an expense, turn on <b>Split with friends</b>.<br>
+      el.innerHTML = `<div class="card">${upiRowHtml()}</div>` + cloudCardHtml() + `<div class="empty">👥 No bills on this device yet.<br>When adding an expense, turn on <b>Split with friends</b>.<br>
         Only your share counts as your spending; what friends owe shows up here.
         <br><button class="btn primary" data-action="new-group">Create a group on this device</button></div>`;
       return;
@@ -3223,6 +3238,7 @@
       <div class="card">
         ${owedSumHtml(totals)}
         <p class="hint" style="text-align:center">All-time balances across groups and one-off bills.</p>
+        ${upiRowHtml()}
       </div>
       ${cloudCardHtml()}
       <div class="card">
@@ -3305,6 +3321,7 @@
   }
 
   document.getElementById('splitContent').addEventListener('click', ev => {
+    if (ev.target.closest('[data-action="my-upi"]')) return editMyUpi();
     if (handleCloudClick(ev)) return;
     const groupRow = ev.target.closest('[data-group]');
     if (groupRow) { splitNav = { group: groupRow.dataset.group, friend: null }; window.scrollTo(0, 0); return renderSplitTab(); }
@@ -3344,6 +3361,7 @@
     outBtn.textContent = `I paid ${name === 'They' ? 'them' : name}`;
     inBtn.classList.toggle('active', dir === 'in');
     outBtn.classList.toggle('active', dir === 'out');
+    updateUpiBox(true);
   }
 
   // New settlement prefilled to clear the friend's balance (within groupId, if given), or an existing one to edit
@@ -3357,6 +3375,7 @@
 
   function openSettle(friend, id, groupId) {
     settleCloud = null;
+    upiPayeeName = null;
     settleMode(false);
     const x = id && settlements.find(s => s.id === id);
     settleId = x ? x.id : null;
@@ -3386,9 +3405,19 @@
   });
 
   document.getElementById('settleMember').addEventListener('change', () => setSettleDir(settleDir));
+  document.getElementById('settleAmount').addEventListener('input', () => updateUpiBox(false));
+  document.getElementById('upiId').addEventListener('input', () => updateUpiBox(false));
+  document.getElementById('upiPay').addEventListener('click', ev => {
+    const payee = settlePayee();
+    const vpa = document.getElementById('upiId').value.trim();
+    if (!isUpiId(vpa)) { ev.preventDefault(); return; }
+    if (payee && !payee.fixed) rememberUpi(payee.name, vpa);
+  });
 
   document.getElementById('settleForm').addEventListener('submit', ev => {
     ev.preventDefault();
+    const payee = settlePayee(), vpa = document.getElementById('upiId').value.trim();
+    if (payee && !payee.fixed && isUpiId(vpa)) rememberUpi(payee.name, vpa);
     if (settleCloud) return saveCloudPayment();
     const amount = evalAmount(document.getElementById('settleAmount').value);
     const friend = canonFriend(document.getElementById('settleFriend').value);
@@ -3570,6 +3599,8 @@
         lines.push(`• ${short(date)} · ${dir === 'in' ? `${friend} paid ${me}` : `${me} paid ${friend}`} ${formatMoney(amount)}`));
       if (snap.s.length > SHARE_MAX_LINES) lines.push(`• …and ${snap.s.length - SHARE_MAX_LINES} more`);
     }
+    const upi = localStorage.getItem(MY_UPI_KEY);
+    if (upi && snap.bal.some(([, bal]) => bal > 0)) lines.push('', `Pay ${me} by UPI: ${upi}`);
     if (link) lines.push('', `See the details: ${link}`);
     return lines.join('\n');
   }
@@ -3793,8 +3824,10 @@
     groups: new Map(),                // gid -> group
     bills: new Map(),                 // gid -> Map(bid -> bill)
     payments: new Map(),              // gid -> Map(pid -> payment)
+    upis: new Map(),                  // gid -> Map(uid -> UPI ID each member published)
     watchers: new Map(),              // gid -> [unsubscribe]
     stopGroups: null,
+    problem: '',                      // last error reading shared groups, shown until things work again
   };
 
   function loadCloud() {
@@ -3842,6 +3875,7 @@
     cloud.groups.clear();
     cloud.bills.clear();
     cloud.payments.clear();
+    cloud.upis.clear();
   }
 
   function onCloudUser(user) {
@@ -3850,11 +3884,25 @@
     cloud.user = user ? { uid: user.uid, name: user.displayName || (user.email || '').split('@')[0] || 'Me', email: user.email || '' } : null;
     if (user) {
       localStorage.setItem(CLOUD_KEY, '1');
-      const { collection, query, where, onSnapshot } = cloud.fb;
-      cloud.stopGroups = onSnapshot(query(collection(cloud.db, 'groups'), where('memberUids', 'array-contains', user.uid)),
-        onGroupsSnapshot, cloudError);
+      watchGroups(user.uid);
     }
     cloudChanged();
+  }
+
+  // Your groups, live. If Firebase refuses (rules not published yet, offline sign-in expired…), keep retrying.
+  function watchGroups(uid, retry = 0) {
+    const { collection, query, where, onSnapshot } = cloud.fb;
+    cloud.stopGroups = onSnapshot(query(collection(cloud.db, 'groups'), where('memberUids', 'array-contains', uid)),
+      snap => { cloud.problem = ''; onGroupsSnapshot(snap); },
+      err => {
+        cloudError(err);
+        cloud.problem = (err && (err.code || err.message)) || String(err);
+        cloud.stopGroups = null;
+        cloudChanged();
+        setTimeout(() => {
+          if (cloud.user && cloud.user.uid === uid && !cloud.stopGroups) watchGroups(uid, retry + 1);
+        }, Math.min(2000 * 2 ** retry, 60000));
+      });
   }
 
   function onGroupsSnapshot(snap) {
@@ -3871,6 +3919,7 @@
       cloud.watchers.delete(id);
       cloud.bills.delete(id);
       cloud.payments.delete(id);
+      cloud.upis.delete(id);
     });
     // Groups you're no longer in (left, removed, deleted): your shares of their bills stay as plain
     // expenses. Only trusted from the server, not from a half-filled offline cache.
@@ -3907,6 +3956,10 @@
         cloud.payments.set(gid, toMap(snap));
         cloudChanged();
       }, failed),
+      onSnapshot(collection(cloud.db, 'groups', gid, 'upi'), snap => {
+        cloud.upis.set(gid, new Map(snap.docs.map(d => [d.id, d.data().vpa])));
+        publishMyUpi(gid);
+      }, cloudError), // optional extra: if refused (older rules), bills and payments carry on
     ]);
   }
 
@@ -3924,11 +3977,11 @@
     });
   }
 
-  function cloudWrite(promise) {
+  // refused = what to say if Firebase's security rules turn the write down
+  function cloudWrite(promise, refused = "That change wasn't allowed. You may no longer be in this group.") {
     return promise.catch(err => {
       cloudError(err);
-      alert(err && err.code === 'permission-denied'
-        ? "That change wasn't allowed. You may no longer be in this group."
+      alert(err && err.code === 'permission-denied' ? refused
         : "Couldn't save that to the shared group: " + ((err && err.message) || err));
     });
   }
@@ -4074,7 +4127,8 @@
             </div>${bal}
           </div>`;
       }).join('');
-      body = (rows || '<p class="hint" style="margin-top:4px">Create a shared group, then send the invite link to friends.</p>') + `
+      body = (cloud.problem ? `<p class="hint" style="margin-top:4px"><b>Problem reaching Firebase:</b> ${escapeHtml(cloud.problem)}. Retrying…</p>` : '') +
+        (rows || '<p class="hint" style="margin-top:4px">Create a shared group, then send the invite link to friends.</p>') + `
         <div class="cloud-account"><span>Signed in as ${escapeHtml(cloud.user.email || cloud.user.name)}</span>
           <button class="link-btn" data-action="cloud-signout">Sign out</button></div>`;
     } else if (cloud.loading && !cloud.fb && localStorage.getItem(CLOUD_KEY)) {
@@ -4232,7 +4286,8 @@
       const members = { [cloud.user.uid]: { name: myCloudName(), uid: cloud.user.uid, email: cloud.user.email } };
       groupEdit.members.forEach(n => { members['p_' + randomId(10)] = { name: n }; });
       cloudWrite(setDoc(ref, { name, createdBy: cloud.user.uid, createdAt: now, updatedAt: now,
-        inviteCode: randomId(24), memberUids: [cloud.user.uid], members, joins: {} }));
+        inviteCode: randomId(24), memberUids: [cloud.user.uid], members, joins: {} }),
+        "Firebase refused to create the group. Check the security rules from firestore.rules are published (Firestore Database → Rules).");
       splitNav = { group: null, friend: null, cloud: ref.id };
     } else {
       const changes = { name, updatedAt: now };
@@ -4444,6 +4499,7 @@
     const row = t.rows.find(r => r.id === other);
     settleCloud = { gid, pid: p ? pid : null };
     settleId = null;
+    upiPayeeName = null;
     settleMode(true);
     const ids = new Set(t.rows.map(r => r.id));
     if (other) ids.add(other);
@@ -4482,6 +4538,110 @@
       { deleted: true, updatedAt: Date.now(), updatedBy: cloud.user.uid }));
     closeModal('settleModal');
     renderSplitTab();
+  }
+
+  // ---------- Paying with UPI ----------
+  // Settle up can hand over to GPay / PhonePe / any UPI app with the payee and amount filled in, using
+  // the standard upi://pay link. You confirm with your PIN there; nothing about the payment comes back here.
+  // UPI IDs: friends on this device are remembered here; in shared groups each person publishes their
+  // own (groups/{gid}/upi/{uid}), which only they can change.
+
+  const MY_UPI_KEY = 'moneyManager.myUpi';
+  const FRIEND_UPI_KEY = 'moneyManager.friendUpi.v1'; // { lowercase name: UPI ID }
+
+  function isUpiId(v) {
+    return /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/.test(v || '');
+  }
+
+  function friendUpis() {
+    try { return JSON.parse(localStorage.getItem(FRIEND_UPI_KEY)) || {}; } catch { return {}; }
+  }
+
+  function rememberUpi(name, vpa) {
+    const all = friendUpis();
+    if (all[name.toLowerCase()] === vpa) return;
+    all[name.toLowerCase()] = vpa;
+    localStorage.setItem(FRIEND_UPI_KEY, JSON.stringify(all));
+  }
+
+  // Who you'd be paying in the settle form: { name, vpa, fixed (published by them in a shared group) }
+  function settlePayee() {
+    if (settleCloud) {
+      const g = cloud.groups.get(settleCloud.gid);
+      const id = document.getElementById('settleMember').value;
+      const m = g && g.members[id];
+      if (!m) return null;
+      const published = m.uid && cloud.upis.get(g.id) && cloud.upis.get(g.id).get(m.uid);
+      return published ? { name: m.name, vpa: published, fixed: true } : { name: m.name || '', vpa: friendUpis()[(m.name || '').toLowerCase()] || '' };
+    }
+    const name = canonFriend(document.getElementById('settleFriend').value);
+    return name ? { name, vpa: friendUpis()[name.toLowerCase()] || '' } : null;
+  }
+
+  function upiLink(vpa, name, amount, note) {
+    const q = Object.entries({ pa: vpa, pn: name, am: amount.toFixed(2), cu: 'INR', tn: note.slice(0, 50) })
+      .map(([k, v]) => k + '=' + encodeURIComponent(v).replace(/%40/g, '@')).join('&'); // some UPI apps want a plain @
+    // iPhones don't open upi:// links; GPay's own link does the same there
+    return (/iPhone|iPad|iPod/.test(navigator.userAgent) ? 'gpay://upi/pay?' : 'upi://pay?') + q;
+  }
+
+  // Shown only when you're the one paying. refill = the form changed (person, direction): put in the
+  // person's saved UPI ID if it's someone else than before, keeping what you typed for the same person.
+  let upiPayeeName = null;
+  function updateUpiBox(refill) {
+    const box = document.getElementById('upiBox');
+    const payee = settleDir === 'out' && !settleId && !(settleCloud && settleCloud.pid) ? settlePayee() : null;
+    box.hidden = !payee;
+    if (!payee) return;
+    const input = document.getElementById('upiId');
+    if (payee.fixed || (refill && payee.name !== upiPayeeName)) input.value = payee.vpa;
+    upiPayeeName = payee.name;
+    input.readOnly = !!payee.fixed;
+    document.getElementById('upiLabel').textContent = `${payee.name}'s UPI ID`;
+    document.getElementById('upiNote').textContent = payee.fixed ? `Added by ${payee.name} in this group.`
+      : input.value && !isUpiId(input.value.trim()) ? 'That doesn’t look like a UPI ID (it should look like name@bank).'
+      : 'Remembered on this device for next time.';
+    const amount = evalAmount(document.getElementById('settleAmount').value);
+    const vpa = input.value.trim();
+    const pay = document.getElementById('upiPay');
+    const ready = isUpiId(vpa) && amount > 0;
+    const group = settleCloud && cloud.groups.get(settleCloud.gid);
+    pay.href = ready ? upiLink(vpa, payee.name, amount, `Money Manager${group ? ': ' + group.name : ''}`) : '#';
+    pay.setAttribute('aria-disabled', String(!ready));
+    pay.textContent = ready ? `Pay ${formatMoney(amount)} with UPI` : 'Pay with UPI';
+  }
+
+  function upiRowHtml() {
+    const mine = localStorage.getItem(MY_UPI_KEY);
+    return `<div class="upi-row"><span>💳 ${mine ? `Your UPI ID: <b>${escapeHtml(mine)}</b>` : 'Add your UPI ID so friends can pay you'}</span>
+      <button class="link-btn" data-action="my-upi">${mine ? 'Edit' : 'Add'}</button></div>`;
+  }
+
+  function editMyUpi() {
+    const now = localStorage.getItem(MY_UPI_KEY) || '';
+    const entered = prompt('Your UPI ID (e.g. name@okaxis). Friends in your shared groups will see it, and it’s added to summaries you share. Leave empty to remove.', now);
+    if (entered === null) return;
+    const vpa = entered.trim();
+    if (vpa && !isUpiId(vpa)) return alert('That doesn’t look like a UPI ID. It should look like name@bank.');
+    if (vpa) localStorage.setItem(MY_UPI_KEY, vpa);
+    else localStorage.removeItem(MY_UPI_KEY);
+    // Shared groups: publish the new one, or take it down
+    if (cloud.user) cloud.groups.forEach(g => {
+      if (vpa) publishMyUpi(g.id);
+      else if (cloud.upis.get(g.id) && cloud.upis.get(g.id).has(cloud.user.uid)) {
+        cloudWrite(cloud.fb.deleteDoc(cloud.fb.doc(cloud.db, 'groups', g.id, 'upi', cloud.user.uid)));
+      }
+    });
+    renderSplitTab();
+  }
+
+  // Put your UPI ID in a shared group if it isn't there (or is out of date)
+  function publishMyUpi(gid) {
+    const vpa = localStorage.getItem(MY_UPI_KEY);
+    const have = cloud.upis.get(gid);
+    if (!vpa || !cloud.user || !have || have.get(cloud.user.uid) === vpa) return;
+    const { doc, setDoc } = cloud.fb;
+    cloudWrite(setDoc(doc(cloud.db, 'groups', gid, 'upi', cloud.user.uid), { vpa, updatedAt: Date.now() }));
   }
 
   // ---------- Category management ----------

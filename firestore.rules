@@ -7,6 +7,7 @@ rules_version = '2';
 //                 members: { memberId: { name, uid?, email?, left? } }, joins: { uid: inviteCode } }
 //   groups/{gid}/bills/{bid}      shared bills
 //   groups/{gid}/payments/{pid}   settle-up payments
+//   groups/{gid}/upi/{uid}        each member's UPI ID: { vpa }
 // Personal expenses never come here; they stay on each person's device and their own sync.
 
 service cloud.firestore {
@@ -61,6 +62,16 @@ service cloud.firestore {
           && request.resource.data.shares is map
           && request.resource.data.paidBy is string;
         allow delete: if false; // bills are soft-deleted (deleted: true) so every device can catch up
+      }
+
+      // Each member's UPI ID, so others can pay them; only that person can set or remove it
+      match /upi/{uid} {
+        allow read: if isGroupMember();
+        allow create, update: if isGroupMember()
+          && request.auth.uid == uid
+          && request.resource.data.vpa is string
+          && request.resource.data.vpa.size() <= 100;
+        allow delete: if isGroupMember() && request.auth.uid == uid;
       }
 
       match /payments/{pid} {
