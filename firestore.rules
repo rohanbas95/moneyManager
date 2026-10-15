@@ -1,0 +1,93 @@
+rules_version = '2';
+
+// Security rules for Money Manager's shared split groups.
+// Paste into Firebase console → Firestore Database → Rules, then Publish.
+//
+// groups/{gid}: { name, createdBy, createdAt, updatedAt, inviteCode, memberUids: [uid],
+//                 members: { memberId: { name, uid?, email?, left? } }, joins: { uid: inviteCode } }
+//   groups/{gid}/bills/{bid}      shared bills
+//   groups/{gid}/payments/{pid}   settle-up payments
+//   groups/{gid}/upi/{uid}        each member's UPI ID: { vpa }
+// Personal expenses never come here; they stay on each person's device and their own sync.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /groups/{gid} {
+      function isMember() {
+        return signedIn() && request.auth.uid in resource.data.memberUids;
+      }
+
+      // Someone with the invite link adds only themselves, proving they have the current invite code
+      function isJoining() {
+        let before = resource.data;
+        let after = request.resource.data;
+        let me = request.auth.uid;
+        return signedIn()
+          && !(me in before.memberUids)
+          && after.diff(before).affectedKeys().hasOnly(['memberUids', 'members', 'joins', 'updatedAt'])
+          && after.memberUids.toSet() == before.memberUids.toSet().union([me].toSet())
+          && after.memberUids.size() == before.memberUids.size() + 1
+          && after.joins[me] == before.inviteCode
+          && after.joins.diff(before.joins).affectedKeys().hasOnly([me])
+          && after.members.diff(before.members).affectedKeys().hasOnly([me])
+          && after.members[me].uid == me;
+      }
+
+      allow read: if isMember();
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.memberUids == [request.auth.uid]
+        && request.resource.data.inviteCode is string
+        && request.resource.data.inviteCode.size() >= 16
+        && request.resource.data.joins == {};
+      allow update: if (isMember() && request.resource.data.createdBy == resource.data.createdBy)
+        || isJoining();
+      allow delete: if isMember() && resource.data.createdBy == request.auth.uid;
+
+      function isGroupMember() {
+        return signedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/groups/$(gid)).data.memberUids;
+      }
+
+      match /bills/{bid} {
+        allow read: if isGroupMember();
+        allow create, update: if isGroupMember()
+          && request.resource.data.total is number
+          && request.resource.data.total > 0
+          && request.resource.data.shares is map
+          && request.resource.data.paidBy is string;
+        allow delete: if false; // bills are soft-deleted (deleted: true) so every device can catch up
+      }
+
+      // Each member's UPI ID, so others can pay them; only that person can set or remove it
+      match /upi/{uid} {
+        allow read: if isGroupMember();
+        allow create, update: if isGroupMember()
+          && request.auth.uid == uid
+          && request.resource.data.vpa is string
+          && request.resource.data.vpa.size() <= 100;
+        allow delete: if isGroupMember() && request.auth.uid == uid;
+      }
+
+      match /payments/{pid} {
+        allow read: if isGroupMember();
+        allow create, update: if isGroupMember()
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.from is string
+          && request.resource.data.to is string;
+        allow delete: if false;
+      }
+    }
+
+    // Anything else is closed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

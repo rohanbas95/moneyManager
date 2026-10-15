@@ -29,6 +29,9 @@
     --danger: #dc2626;
     --border: #e5e7eb;
     --income: #15803d;
+    /* People in a split group's spending report, in fixed order (checked for colour-blind separation) */
+    --p1: #2a78d6; --p2: #eb6834; --p3: #1baf7a; --p4: #eda100;
+    --p5: #e87ba4; --p6: #008300; --p7: #4a3aa7; --p8: #e34948;
   }
   /* Theme: follows the phone's setting unless Light or Dark is picked in the menu (html[data-theme]).
      The two dark blocks must stay identical. */
@@ -42,6 +45,8 @@
       --muted: #9ca3af;
       --border: #374151;
       --income: #4ade80;
+      --p1: #3987e5; --p2: #d95926; --p3: #199e70; --p4: #c98500;
+      --p5: #d55181; --p6: #008300; --p7: #9085e9; --p8: #e66767;
     }
   }
   :root[data-theme="dark"] {
@@ -52,6 +57,8 @@
     --muted: #9ca3af;
     --border: #374151;
     --income: #4ade80;
+    --p1: #3987e5; --p2: #d95926; --p3: #199e70; --p4: #c98500;
+    --p5: #d55181; --p6: #008300; --p7: #9085e9; --p8: #e66767;
   }
   .setting-label { margin: 20px 0 6px; font-size: 13px; color: var(--muted); }
   .setting-label + .segmented { margin-bottom: 0; }
@@ -679,6 +686,109 @@
   .txn-head span { font-size: 12px; color: var(--muted); white-space: nowrap; }
   .txn-close { width: 30px; height: 30px; border: none; border-radius: 50%; background: var(--bg); color: var(--muted); font-size: 13px; cursor: pointer; }
   #chartTxns .day-group:last-child { margin-bottom: 0; }
+
+  /* Split with friends */
+  .split-toggle { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; color: var(--text); cursor: pointer; }
+  .split-toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  .split-box { margin-top: 10px; padding: 12px; border-radius: 12px; background: var(--bg); }
+  .split-box .chips { margin: 0 0 8px; }
+  .split-box .chip { background: var(--card); }
+  .split-box input, .split-box select { background: var(--card); }
+  .split-box .segmented { margin: 12px 0 8px; }
+  .share-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 14px; }
+  .share-row .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .share-row .amt { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .share-row input { width: 120px; padding: 8px 10px; text-align: right; }
+  .split-summary { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .split-summary.error { color: var(--danger); }
+  .split-tag { color: var(--accent); white-space: nowrap; }
+  .owed-sum { display: flex; gap: 8px; }
+  .owed-sum > div { flex: 1; padding: 12px; border-radius: 12px; background: var(--bg); text-align: center; }
+  .owed-sum .lbl { font-size: 12px; color: var(--muted); }
+  .owed-sum .val { margin-top: 2px; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--income); }
+  .neg { color: var(--danger); }
+  .friend-row { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .friend-row:last-child { border-bottom: none; }
+  .friend-row .avatar {
+    width: 38px; height: 38px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .friend-row .info { flex: 1; min-width: 0; }
+  .friend-row .name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .friend-row .sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .friend-row .bal { text-align: right; font-size: 12px; white-space: nowrap; }
+  .friend-row .bal b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .friend-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .friend-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 18px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .back-btn { padding: 6px 10px; border: none; border-radius: 8px; background: var(--bg); color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .friend-bal { font-size: 15px; margin-bottom: 12px; }
+  .settle-dir button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .card-head h2 { margin: 0; }
+  .link-btn { padding: 6px 4px; border: none; background: none; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .friend-row .avatar.group { border-radius: 12px; font-size: 18px; }
+  .friend-row .bal.muted { color: var(--muted); }
+  .group-tag { color: var(--accent); }
+  .owed-sum + .btn-row { margin-top: 12px; }
+  .share-text {
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.45;
+    resize: vertical;
+  }
+  body.shared-mode > header, body.shared-mode > main, body.shared-mode > .fab { display: none !important; }
+  #sharedView { max-width: 600px; margin: 0 auto; padding: 16px; }
+  .shared-banner { padding: 20px 16px; margin: -16px -16px 16px; background: var(--accent); color: #fff; }
+  .shared-banner h1 { margin: 0; font-size: 20px; }
+  .shared-banner p { margin: 6px 0 0; font-size: 13px; opacity: 0.85; }
+  .shared-shares { margin-top: 3px; font-size: 12px; color: var(--muted); }
+  .chip.off { border-style: dashed; color: var(--muted); cursor: pointer; padding: 4px 12px; }
+  .cloud-account { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .cloud-account span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .claim-box { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--bg); font-size: 14px; }
+  .claim-box .chips { margin: 8px 0 0; }
+  .claim-box .chip { cursor: pointer; padding: 6px 14px; background: var(--card); }
+  .upi-box { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--bg); }
+  .upi-box label { margin-top: 0; }
+  .upi-box input { background: var(--card); }
+  .upi-btn { display: block; margin-top: 10px; text-align: center; text-decoration: none; }
+  .upi-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+  .upi-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .upi-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .report-total { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .report-total b { display: block; font-size: 24px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .report-chart { max-width: 240px; margin: 4px auto 8px; }
+  .report-chart .chart-center { left: 25%; width: 50%; top: 0; height: 100%; }
+  .report-head, .report-row { display: flex; align-items: center; gap: 10px; padding: 8px; font-size: 14px; }
+  .report-head { padding-top: 0; padding-bottom: 4px; font-size: 12px; color: var(--muted); }
+  .report-row { border-radius: 8px; cursor: pointer; }
+  .report-row.sel { background: var(--bg); }
+  .report-row .key { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .report-head .nm, .report-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .report-head .pc, .report-row .pc { width: 40px; text-align: right; font-size: 12px; color: var(--muted); }
+  .report-head .am, .report-row .am { width: 78px; text-align: right; font-variant-numeric: tabular-nums; }
+  .report-row .am.spent { font-weight: 600; }
+  .report-row .am.paid { color: var(--muted); }
+  .report-head .nm { padding-left: 22px; }
+  .transfer-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 14px; }
+  .transfer-row:last-of-type { border-bottom: none; }
+  .transfer-row .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .transfer-row .arrow { color: var(--muted); padding: 0 4px; }
+  .transfer-row .amt { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .transfer-row .go { font-size: 12px; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .simplify-tag { font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 10px; padding: 2px 8px; }
 </style>
 </head>
 <body>
@@ -701,6 +811,7 @@
   <nav class="tabs">
     <button class="tab" data-tab="expenses">Transactions</button>
     <button class="tab" data-tab="charts">Charts</button>
+    <button class="tab" data-tab="split">Split</button>
   </nav>
 </header>
 
@@ -735,6 +846,10 @@
     </div>
     <div id="chartContent"></div>
   </section>
+
+  <section id="splitView" hidden>
+    <div id="splitContent"></div>
+  </section>
 </main>
 
 <button class="fab" onclick="openAdd()">+</button>
@@ -748,7 +863,7 @@
         <button type="button" data-type="expense">Expense</button>
         <button type="button" data-type="income">Income</button>
       </div>
-      <label for="amount">Amount</label>
+      <label for="amount" id="amountLabel">Amount</label>
       <div class="amount-field">
         <input class="big" type="text" id="amount" inputmode="decimal" autocomplete="off" required
           placeholder="0" aria-describedby="calcPreview">
@@ -777,6 +892,28 @@
         <button type="button" data-key="⌫" class="op" aria-label="Backspace">⌫</button>
         <button type="button" data-key="=" class="eq">=</button>
       </div>
+      <div id="splitField">
+        <label class="split-toggle"><input type="checkbox" id="splitOn"> 👥 Split with friends</label>
+        <div class="split-box" id="splitBox" hidden>
+          <label for="splitGroup" style="margin-top:0">Group (optional)</label>
+          <select id="splitGroup"></select>
+          <label>With</label>
+          <div class="chips" id="splitFriends"></div>
+          <div class="add-row" id="splitAddRow">
+            <input type="text" id="splitFriendInput" list="friendList" placeholder="Add a friend's name"
+              enterkeyhint="done" autocomplete="off" aria-label="Friend's name">
+            <button type="button" class="btn secondary small" id="splitFriendAdd">Add</button>
+          </div>
+          <label for="splitPaidBy">Paid by</label>
+          <select id="splitPaidBy"></select>
+          <div class="segmented" id="splitMode">
+            <button type="button" data-mode="equal">Split equally</button>
+            <button type="button" data-mode="custom">Custom amounts</button>
+          </div>
+          <div id="splitShares"></div>
+          <div class="split-summary" id="splitSummary" aria-live="polite"></div>
+        </div>
+      </div>
       <label for="category">Category</label>
       <select id="category" required></select>
       <label for="subcategory">Subcategory (optional)</label>
@@ -792,6 +929,109 @@
       <div class="btn-row">
         <button type="button" class="btn danger" id="deleteBtn" style="display:none">Delete</button>
         <button type="button" class="btn secondary" onclick="closeModal('expenseModal')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Settle up with a friend -->
+<div class="modal-bg" id="settleModal" onclick="if (event.target === this) closeModal('settleModal')">
+  <div class="modal">
+    <h3 id="settleTitle">Settle up</h3>
+    <form id="settleForm">
+      <div id="settleFriendField">
+        <label for="settleFriend">Friend</label>
+        <input type="text" id="settleFriend" list="friendList" autocomplete="off" required>
+      </div>
+      <div id="settleMemberField" hidden>
+        <label for="settleMember">With</label>
+        <select id="settleMember"></select>
+      </div>
+      <div class="segmented settle-dir" id="settleDir" style="margin-top:12px">
+        <button type="button" data-dir="in"></button>
+        <button type="button" data-dir="out"></button>
+      </div>
+      <label for="settleAmount">Amount</label>
+      <input class="big" type="text" id="settleAmount" inputmode="decimal" autocomplete="off" required placeholder="0">
+      <div class="upi-box" id="upiBox" hidden>
+        <label for="upiId" id="upiLabel">Their UPI ID</label>
+        <input type="text" id="upiId" placeholder="name@okaxis" autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="email">
+        <div class="hint" id="upiNote" style="margin-top:6px"></div>
+        <a class="btn primary upi-btn" id="upiPay" href="#">Pay with UPI</a>
+        <p class="hint" style="margin-top:8px">Opens GPay (or another UPI app) with the amount filled in. You confirm with your UPI PIN there; then come back and tap Save to record it.</p>
+      </div>
+      <label for="settleDate">Date</label>
+      <input type="date" id="settleDate" required>
+      <label for="settleNote">Note (optional)</label>
+      <input type="text" id="settleNote" placeholder="e.g. UPI">
+      <div id="settleGroupField">
+        <label for="settleGroup">Group</label>
+        <select id="settleGroup"></select>
+      </div>
+      <p class="hint">Settling up doesn't change your income or expenses — it only changes what you and your friend owe each other. To record money you lent, choose “I paid them”.</p>
+      <div class="btn-row">
+        <button type="button" class="btn danger" id="settleDeleteBtn" style="display:none">Delete</button>
+        <button type="button" class="btn secondary" onclick="closeModal('settleModal')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+<datalist id="friendList"></datalist>
+
+<!-- Share a group's or friend's split summary -->
+<div class="modal-bg" id="shareModal" onclick="if (event.target === this) closeModal('shareModal')">
+  <div class="modal">
+    <h3 id="shareTitle">Share</h3>
+    <label class="split-toggle" style="margin-top:0"><input type="checkbox" id="shareLink" checked> Include a link to view the details</label>
+    <textarea class="share-text" id="shareText" readonly rows="12" aria-label="Message to share"></textarea>
+    <p class="hint">The link carries this summary inside it; nothing is uploaded anywhere. It's a snapshot, so share again after adding bills.</p>
+    <div class="btn-row">
+      <button type="button" class="btn secondary" onclick="closeModal('shareModal')">Close</button>
+      <button type="button" class="btn secondary" id="shareCopy">📋 Copy</button>
+      <button type="button" class="btn primary" id="shareSend">📤 Share</button>
+    </div>
+  </div>
+</div>
+
+<!-- Joining a shared group from an invite link -->
+<div class="modal-bg" id="joinModal">
+  <div class="modal">
+    <h3>Join a shared group</h3>
+    <p id="joinText"></p>
+    <p class="hint">You'll sign in with Google. People in the group will see your name and email, and the bills added there.
+      Your own expenses and income stay private on your device.</p>
+    <div class="btn-row">
+      <button type="button" class="btn secondary" id="joinCancel">Not now</button>
+      <button type="button" class="btn primary" id="joinBtn">Sign in &amp; join</button>
+    </div>
+  </div>
+</div>
+
+<!-- Read-only split summary opened from a shared link -->
+<section id="sharedView" hidden></section>
+
+<!-- Create / edit a split group -->
+<div class="modal-bg" id="groupModal" onclick="if (event.target === this) closeModal('groupModal')">
+  <div class="modal">
+    <h3 id="groupTitle">New group</h3>
+    <form id="groupForm">
+      <label for="groupName">Group name</label>
+      <input type="text" id="groupName" placeholder="e.g. Goa trip, Flatmates" autocomplete="off" required>
+      <label for="groupMemberInput">Members</label>
+      <div class="chips" id="groupMembers"></div>
+      <div class="add-row">
+        <input type="text" id="groupMemberInput" list="friendList" placeholder="Add a friend's name" enterkeyhint="done" autocomplete="off">
+        <button type="button" class="btn secondary small" id="groupMemberAdd">Add</button>
+      </div>
+      <p class="hint" id="groupHint">You're always in the group. When adding a split bill, pick the group and its members fill in for you.</p>
+      <label class="split-toggle"><input type="checkbox" id="groupSimplify"> Simplify debts</label>
+      <p class="hint" style="margin-top:4px">Combines what everyone owes so the group can settle up in as few payments as possible.
+        For example, if Bob owes you ₹500 and you owe Carol ₹500, Bob pays Carol directly. Nobody owes more or less in total.</p>
+      <div class="btn-row">
+        <button type="button" class="btn danger" id="groupDeleteBtn" style="display:none">Delete</button>
+        <button type="button" class="btn secondary" onclick="closeModal('groupModal')">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
       </div>
     </form>
@@ -1026,10 +1266,12 @@
   // Change tracking, so two devices can merge their data (see Sync): every entry/category gets
   // updatedAt when it changes, and deletions are remembered so deleted items don't come back.
   const DELETED_KEY = 'moneyManager.deleted.v1';
-  let deleted = { entries: {}, categories: {} }; // entry id / lowercase category name -> deletedAt (ms)
+  let deleted = { entries: {}, categories: {}, settlements: {}, groups: {} }; // entry / settlement / group id, lowercase category name -> deletedAt (ms)
   try { Object.assign(deleted, JSON.parse(localStorage.getItem(DELETED_KEY))); } catch {}
   let savedEntries = new Map();    // id -> entry as last saved, to spot what changed
   let savedCategories = new Map(); // lowercase name -> category as last saved
+  let savedSettlements = new Map(); // id -> settlement as last saved
+  let savedGroups = new Map();      // id -> group as last saved
 
   const SYNC_KEY = 'moneyManager.sync.v1';
   // When sync is on: GitHub { provider: 'github', owner, repo, token, path, lastSync }
@@ -1040,6 +1282,17 @@
   let syncing = false;
   let syncAgain = false;
 
+  // Money settled with friends (see Split): [{ id, friend, amount, dir: 'in' (they paid me) | 'out' (I paid them),
+  // date, note, createdAt, updatedAt }]. Split bills themselves are entries with a split field.
+  const SETTLE_KEY = 'moneyManager.settlements.v1';
+  let settlements = [];
+  try { settlements = JSON.parse(localStorage.getItem(SETTLE_KEY)) || []; } catch {}
+  savedSettlements = snapshotMap(settlements, entryKey);
+  // Split groups: [{ id, name, members: [friend], createdAt, updatedAt }]; bills and settlements point at one by id
+  const GROUPS_KEY = 'moneyManager.groups.v1';
+  let groups = [];
+  try { groups = JSON.parse(localStorage.getItem(GROUPS_KEY)) || []; } catch {}
+  savedGroups = snapshotMap(groups, entryKey);
   let expenses = loadExpenses();
   savedEntries = snapshotMap(expenses, entryKey);
   let categories = []; // [{ name, type: 'expense'|'income', icon, color, subs: [string], detailsOn, details: [string], updatedAt }]
@@ -1099,7 +1352,21 @@
   function persistData() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
     localStorage.setItem(CAT_STORAGE_KEY, JSON.stringify(categories));
+    localStorage.setItem(SETTLE_KEY, JSON.stringify(settlements));
+    localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
     localStorage.setItem(DELETED_KEY, JSON.stringify(deleted));
+  }
+
+  function saveSettlements() {
+    savedSettlements = trackChanges(settlements, savedSettlements, entryKey, deleted.settlements);
+    persistData();
+    scheduleSync();
+  }
+
+  function saveGroups() {
+    savedGroups = trackChanges(groups, savedGroups, entryKey, deleted.groups);
+    persistData();
+    scheduleSync();
   }
 
   function saveExpenses() {
@@ -1647,7 +1914,7 @@
     // Hidden income amounts aren't searchable, or a search could reveal them
     const amounts = typeOf(e) === 'income' && incomeHidden() ? []
       : [amount, amount.replace(/\.0+$/, ''), Number(e.amount).toLocaleString('en-IN')];
-    const text = [...amounts, e.category, e.subcategory, detailOf(e), e.note].join(' ').toLowerCase();
+    const text = [...amounts, e.category, e.subcategory, detailOf(e), e.note, ...splitPeople(e)].join(' ').toLowerCase();
     return words.every(w => text.includes(w.replace(/^₹/, '')));
   }
 
@@ -1693,6 +1960,11 @@
     document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === ui.tab));
     document.getElementById('expensesView').hidden = ui.tab !== 'expenses';
     document.getElementById('chartsView').hidden = ui.tab !== 'charts';
+    document.getElementById('splitView').hidden = ui.tab !== 'split';
+    if (ui.tab === 'split') {
+      renderSplitTab();
+      return;
+    }
     if (ui.tab === 'charts') {
       renderCharts(ui.chartType === 'income' ? monthIncome : monthSpend);
       return;
@@ -1756,7 +2028,9 @@
               <div class="icon">${escapeHtml(iconFor(e.category))}</div>
               <div class="info">
                 <div class="title">${mark(e.note || detailOf(e) || e.subcategory || e.category)}</div>
-                <div class="cat">${[e.category, e.subcategory, detailOf(e)].filter(Boolean).map(mark).join(' › ')}</div>
+                <div class="cat">${[e.category, e.subcategory, detailOf(e)].filter(Boolean).map(mark).join(' › ')}${e.split
+                  ? ` · <span class="split-tag">👥 your share of ${formatMoney(e.split.total)}</span>` : ''}${e.shared
+                  ? ` · <span class="split-tag">☁️ ${sharedEntryTag(e)}</span>` : ''}</div>
               </div>
               ${typeOf(e) === 'income'
                 ? `<div class="amount income">+${incomeMoney(e.amount)}</div>`
@@ -2333,6 +2607,7 @@
     preview.textContent = !text ? '' : v === null ? (isSum ? 'Incomplete calculation' : 'Not a number')
       : isSum ? '= ' + formatMoney(v) : '';
     amountInput.setCustomValidity(!text || v > 0 ? '' : v === null ? 'Enter an amount or a calculation like 120+45' : 'Amount must be more than 0');
+    if (split.on) renderSplit(false);
   }
 
   function setCalcOpen(open) {
@@ -2382,6 +2657,9 @@
     document.querySelectorAll('#entryTypeToggle button')
       .forEach(b => b.classList.toggle('active', b.dataset.type === type));
     document.getElementById('expenseModalTitle').textContent = (editingId ? 'Edit ' : 'Add ') + type;
+    // Only spending can be split
+    document.getElementById('splitField').hidden = type !== 'expense';
+    renderSplit();
     if (!category) {
       const ofType = categories.filter(c => typeOf(c) === type);
       if (ofType.length === 1) category = ofType[0].name;
@@ -2432,6 +2710,7 @@
     editingId = null;
     document.getElementById('expenseForm').reset();
     document.getElementById('date').value = todayISO();
+    split = newSplit();
     setEntryType('expense');
     updateCalc();
     document.getElementById('deleteBtn').style.display = 'none';
@@ -2446,8 +2725,11 @@
       unlockIncome().then(ok => { if (ok) openEdit(id); });
       return;
     }
+    // Your share of a shared group's bill opens the bill itself
+    if (e.shared && openCloudBill(e.shared.g, e.shared.b)) return;
     editingId = id;
-    document.getElementById('amount').value = e.amount;
+    split = splitFromEntry(e);
+    document.getElementById('amount').value = e.split ? e.split.total : e.amount;
     updateCalc();
     setEntryType(typeOf(e), e.category, e.subcategory || '', e.detail || '');
     document.getElementById('note').value = e.note;
@@ -2473,6 +2755,7 @@
 
   document.getElementById('entryTypeToggle').addEventListener('click', ev => {
     const b = ev.target.closest('button');
+    if (split.cloudBill) return; // a shared group's bill is always spending
     if (b && b.dataset.type !== entryType) setEntryType(b.dataset.type);
   });
 
@@ -2502,6 +2785,25 @@
     };
     if (!(data.amount > 0) || !data.date || !data.category || data.category === ADD_NEW) return;
     if (data.subcategory === ADD_NEW) data.subcategory = '';
+    // A split bill: the field holds the whole bill, but only your share is your spending
+    if (split.on && entryType === 'expense') {
+      const r = computeSplit();
+      if (r.error) {
+        renderSplit(false);
+        document.getElementById('splitSummary').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      if (split.cloud) return saveCloudBill(data, r);
+      data.amount = r.mine;
+      data.split = { total: r.total, paidBy: split.paidBy, mode: split.mode, shares: r.shares };
+      // Friends added to a group's bill join the group
+      const g = findGroup(split.group);
+      if (g) {
+        data.split.group = g.id;
+        const extra = split.friends.filter(f => !g.members.some(m => m.toLowerCase() === f.toLowerCase()));
+        if (extra.length) { g.members.push(...extra); saveGroups(); }
+      }
+    }
 
     const editing = editingId && expenses.find(x => x.id === editingId);
     // A detail saved while tracking was on is kept if the field is hidden now, unless the category changed
@@ -2511,6 +2813,7 @@
     if (detail || (editing && editing.detail)) data.detail = detail;
     if (editing) {
       Object.assign(editing, data);
+      if (!data.split) delete editing.split;
     } else if (editingId) {
       // Deleted on another device while this form was open: saving brings it back
       expenses.push({ id: editingId, createdAt: Date.now(), ...data });
@@ -2518,24 +2821,2113 @@
       expenses.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), createdAt: Date.now(), ...data });
     }
     saveExpenses();
-    // Make sure the saved entry is on screen: jump to its month unless the chosen period already shows it
-    const range = periodRange();
-    if (period.kind === 'month' || data.date < range.start || data.date > range.end) {
-      const [y, m] = data.date.split('-').map(Number);
-      viewDate = new Date(y, m - 1, 1);
-      if (period.kind !== 'month') setPeriod({ kind: 'month' });
-    }
+    revealDate(data.date);
     closeModal('expenseModal');
     render();
   });
 
+  // Make sure a saved entry is on screen: jump to its month unless the chosen period already shows it
+  function revealDate(date) {
+    const range = periodRange();
+    if (period.kind === 'month' || date < range.start || date > range.end) {
+      const [y, m] = date.split('-').map(Number);
+      viewDate = new Date(y, m - 1, 1);
+      if (period.kind !== 'month') setPeriod({ kind: 'month' });
+    }
+  }
+
   document.getElementById('deleteBtn').addEventListener('click', () => {
+    if (split.cloudBill) return deleteCloudBill();
     if (!editingId || !confirm(`Delete this ${entryType}?`)) return;
     expenses = expenses.filter(x => x.id !== editingId);
     saveExpenses();
     closeModal('expenseModal');
     render();
   });
+
+  // ---------- Split with friends ----------
+  // A split bill is saved as a normal expense of your share (so totals and charts show only what you
+  // spent) plus split: { total, paidBy: '' (you) | friend, mode: 'equal' | 'custom', shares: { friend: amount } }.
+  // If you paid, each friend owes you their share; if a friend paid, you owe them yours.
+
+  let split = newSplit(); // the split being edited in the expense form
+
+  function newSplit() {
+    // cloud / cloudBill: a shared group (and bill being edited); friends are then member ids
+    return { on: false, group: '', cloud: '', cloudBill: '', friends: [], paidBy: '', mode: 'equal', custom: {} };
+  }
+
+  function splitFromEntry(e) {
+    if (!e.split) return newSplit();
+    const friends = Object.keys(e.split.shares || {});
+    if (e.split.paidBy && !friends.includes(e.split.paidBy)) friends.push(e.split.paidBy);
+    const custom = { '': String(e.amount) };
+    friends.forEach(f => { custom[f] = String((e.split.shares || {})[f] || 0); });
+    return { on: true, group: findGroup(e.split.group) ? e.split.group : '', friends, paidBy: e.split.paidBy || '', mode: e.split.mode || 'equal', custom };
+  }
+
+  // Friends on an entry (for search)
+  function splitPeople(e) {
+    return e.split ? [...Object.keys(e.split.shares || {}), e.split.paidBy || ''] : [];
+  }
+
+  // Everyone ever split with or settled with, by first spelling seen
+  function knownFriends() {
+    const byKey = new Map();
+    const add = n => { if (n && !byKey.has(n.toLowerCase())) byKey.set(n.toLowerCase(), n); };
+    expenses.forEach(e => splitPeople(e).forEach(add));
+    settlements.forEach(x => add(x.friend));
+    groups.forEach(g => g.members.forEach(add));
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b));
+  }
+
+  // A typed name, spelled the way it's already known
+  function canonFriend(name) {
+    name = (name || '').trim().replace(/\s+/g, ' ');
+    return knownFriends().find(f => f.toLowerCase() === name.toLowerCase()) || name;
+  }
+
+  function fillFriendList() {
+    document.getElementById('friendList').innerHTML =
+      knownFriends().map(f => `<option value="${escapeHtml(f)}"></option>`).join('');
+  }
+
+  const round2 = n => Math.round(n * 100) / 100;
+
+  function findGroup(id) {
+    return id ? groups.find(g => g.id === id) : null;
+  }
+
+  function groupNamed(name) {
+    return groups.find(g => g.name.toLowerCase() === name.trim().toLowerCase());
+  }
+
+  // Options for a group <select>; the expense form can also start a new group from here
+  function groupOptions(selected, withNew, withCloud) {
+    const shared = withCloud && cloud.user ? [...cloud.groups.values()].map(g =>
+      `<option value="cloud:${escapeHtml(g.id)}"${'cloud:' + g.id === selected ? ' selected' : ''}>☁️ ${escapeHtml(g.name || 'Shared group')}</option>`).join('') : '';
+    return '<option value="">— No group —</option>' + shared +
+      groups.map(g => `<option value="${escapeHtml(g.id)}"${g.id === selected ? ' selected' : ''}>👥 ${escapeHtml(g.name)}</option>`).join('') +
+      (withNew ? `<option value="${ADD_NEW}">➕ New group…</option>` : '');
+  }
+
+  // Display name for someone in the split form ('' = you)
+  function splitName(k) {
+    if (!k) return 'You';
+    return split.cloud ? cloudMemberName(split.cloud, k) : k;
+  }
+
+  function newId() {
+    return crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
+  }
+
+  // Your share and each friend's from the form; error is set when it can't be saved yet
+  function computeSplit() {
+    const total = evalAmount(amountInput.value);
+    const out = { total, mine: 0, shares: {}, error: '' };
+    if (!split.friends.length) { out.error = 'Add at least one friend to split with.'; return out; }
+    if (!(total > 0)) { out.error = 'Enter the total bill above.'; return out; }
+    if (split.mode === 'equal') {
+      // Friends get an even share; any odd paisa stays with you
+      const each = Math.floor(total / (split.friends.length + 1) * 100) / 100;
+      split.friends.forEach(f => { out.shares[f] = each; });
+      out.mine = round2(total - each * split.friends.length);
+    } else {
+      const val = k => evalAmount(split.custom[k] || '0');
+      const vals = [val(''), ...split.friends.map(val)];
+      if (vals.some(v => v === null || v < 0)) { out.error = 'Each share must be a number.'; return out; }
+      out.mine = vals[0];
+      split.friends.forEach((f, i) => { out.shares[f] = vals[i + 1]; });
+      const left = round2(total - vals.reduce((a, b) => a + b, 0));
+      if (left > 0) out.error = `${formatMoney(left)} of the bill isn't assigned yet.`;
+      if (left < 0) out.error = `Shares add up to ${formatMoney(-left)} more than the bill.`;
+    }
+    // A shared group's bill can leave you out (nothing goes into your expenses then)
+    if (!out.error && !(out.mine > 0) && !split.cloud) out.error = 'Your share must be more than ₹0. For money you only lent, use Settle up in the Split tab.';
+    return out;
+  }
+
+  // full = rebuild friends and inputs too; otherwise just the numbers (so typing in a share keeps focus)
+  function renderSplit(full = true) {
+    document.getElementById('splitOn').checked = split.on;
+    document.getElementById('splitBox').hidden = !split.on;
+    document.getElementById('amountLabel').textContent = split.on && entryType === 'expense' ? 'Total bill' : 'Amount';
+    if (!split.on) return;
+    if (full) {
+      fillFriendList();
+      const groupSel = document.getElementById('splitGroup');
+      groupSel.innerHTML = groupOptions(split.cloud ? 'cloud:' + split.cloud : split.group, !split.cloudBill, true);
+      groupSel.value = split.cloud ? 'cloud:' + split.cloud : split.group;
+      groupSel.disabled = !!split.cloudBill; // a shared bill stays in its group
+      // In a shared group, people come from the group: left-out members can be tapped back in
+      const g = split.cloud && cloud.groups.get(split.cloud);
+      const leftOut = g ? activeMembers(g).filter(id => id !== myMemberId(g) && !split.friends.includes(id)) : [];
+      document.getElementById('splitFriends').innerHTML = split.friends.map((f, i) =>
+        `<span class="chip">${escapeHtml(splitName(f))}<button type="button" data-remove="${i}" aria-label="Remove ${escapeHtml(splitName(f))}">✕</button></span>`).join('') +
+        leftOut.map(id => `<button type="button" class="chip off" data-include="${escapeHtml(id)}">+ ${escapeHtml(splitName(id))}</button>`).join('');
+      document.getElementById('splitAddRow').hidden = !!split.cloud;
+      document.getElementById('splitPaidBy').innerHTML = '<option value="">You</option>' +
+        split.friends.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(splitName(f))}</option>`).join('');
+      document.getElementById('splitPaidBy').value = split.paidBy;
+      document.querySelectorAll('#splitMode button').forEach(b => b.classList.toggle('active', b.dataset.mode === split.mode));
+    }
+    const r = computeSplit();
+    const people = [['', 'You'], ...split.friends.map(f => [f, splitName(f)])];
+    const sharesEl = document.getElementById('splitShares');
+    if (split.mode === 'equal') {
+      sharesEl.innerHTML = split.friends.length && r.total > 0 ? people.map(([k, label]) =>
+        `<div class="share-row"><span class="who">${escapeHtml(label)}</span><span class="amt">${formatMoney(k ? r.shares[k] : r.mine)}</span></div>`).join('') : '';
+    } else if (full) {
+      sharesEl.innerHTML = people.map(([k, label]) => `
+        <div class="share-row"><span class="who">${escapeHtml(label)}</span>
+          <input type="text" inputmode="decimal" autocomplete="off" placeholder="0" data-share="${escapeHtml(k)}"
+            value="${escapeHtml(split.custom[k] || '')}" aria-label="${escapeHtml(label)}'s share"></div>`).join('');
+    }
+    const summary = document.getElementById('splitSummary');
+    summary.classList.toggle('error', !!r.error && split.friends.length > 0 && r.total > 0);
+    if (r.error) summary.textContent = r.error;
+    else {
+      const owe = split.paidBy
+        ? (r.mine > 0 ? `You owe ${splitName(split.paidBy)} ${formatMoney(r.mine)}.` : `${splitName(split.paidBy)} paid; you're not in this one.`)
+        : `Friends owe you ${formatMoney(r.total - r.mine)}.`;
+      summary.textContent = r.mine > 0 ? `Your share ${formatMoney(r.mine)} goes into your expenses. ${owe}`
+        : `Your share is ₹0, so nothing goes into your expenses. ${owe}`;
+    }
+  }
+
+  function addSplitFriend() {
+    const input = document.getElementById('splitFriendInput');
+    const name = canonFriend(input.value);
+    input.value = '';
+    if (!name || split.friends.some(f => f.toLowerCase() === name.toLowerCase())) return;
+    split.friends.push(name);
+    renderSplit();
+  }
+
+  document.getElementById('splitOn').addEventListener('change', ev => {
+    split.on = ev.target.checked;
+    renderSplit();
+    if (split.on && !split.friends.length) document.getElementById('splitFriendInput').focus();
+  });
+  document.getElementById('splitFriendAdd').addEventListener('click', addSplitFriend);
+  document.getElementById('splitFriendInput').addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' || ev.key === ',') { ev.preventDefault(); addSplitFriend(); }
+  });
+  // Picking a suggestion from the list adds it straight away
+  document.getElementById('splitFriendInput').addEventListener('input', ev => {
+    if (ev.inputType === 'insertReplacementText' || ev.inputType === undefined) {
+      if (knownFriends().includes(ev.target.value)) addSplitFriend();
+    }
+  });
+  document.getElementById('splitFriends').addEventListener('click', ev => {
+    const inc = ev.target.closest('[data-include]');
+    if (inc) {
+      split.friends.push(inc.dataset.include);
+      return renderSplit();
+    }
+    const b = ev.target.closest('[data-remove]');
+    if (!b) return;
+    const [gone] = split.friends.splice(Number(b.dataset.remove), 1);
+    if (split.paidBy === gone) split.paidBy = '';
+    delete split.custom[gone];
+    renderSplit();
+  });
+  document.getElementById('splitPaidBy').addEventListener('change', ev => { split.paidBy = ev.target.value; renderSplit(false); });
+
+  // Choosing a group brings in its members (any can still be removed for this bill)
+  function applyGroup(id) {
+    const g = findGroup(id);
+    split.group = g ? g.id : '';
+    if (g) {
+      split.friends = [...g.members];
+      if (split.paidBy && !split.friends.includes(split.paidBy)) split.paidBy = '';
+    }
+  }
+
+  document.getElementById('splitGroup').addEventListener('change', ev => {
+    let id = ev.target.value;
+    if (id.startsWith('cloud:')) {
+      applyCloudGroup(id.slice(6));
+      return renderSplit();
+    }
+    if (split.cloud) Object.assign(split, { cloud: '', friends: [], paidBy: '', custom: {} }); // member ids mean nothing here
+    if (id === ADD_NEW) {
+      const name = (prompt('New group name (the friends added below become its members):') || '').trim();
+      id = '';
+      if (name && groupNamed(name)) id = groupNamed(name).id; // already exists: just pick it
+      else if (name) {
+        const g = { id: newId(), name, members: [...split.friends], createdAt: Date.now() };
+        groups.push(g);
+        saveGroups();
+        id = g.id;
+      }
+    }
+    applyGroup(id);
+    renderSplit();
+  });
+  document.getElementById('splitMode').addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (!b || b.dataset.mode === split.mode) return;
+    // Start custom amounts from the equal split
+    if (b.dataset.mode === 'custom') {
+      const r = computeSplit();
+      if (r.total > 0 && split.friends.length) {
+        split.custom = { '': String(r.mine) };
+        split.friends.forEach(f => { split.custom[f] = String(r.shares[f]); });
+      }
+    }
+    split.mode = b.dataset.mode;
+    renderSplit();
+  });
+  document.getElementById('splitShares').addEventListener('input', ev => {
+    const k = ev.target.dataset.share;
+    if (k === undefined) return;
+    split.custom[k] = ev.target.value;
+    renderSplit(false);
+  });
+
+  // Per friend: balance > 0 = they owe you, plus everything shared with them, newest first.
+  // groupId limits it to one group's bills and settlements; undefined = everything.
+  function friendBalances(groupId) {
+    const inScope = item => groupId === undefined || (item || '') === groupId;
+    const byKey = new Map();
+    const get = name => {
+      const key = name.toLowerCase();
+      if (!byKey.has(key)) byKey.set(key, { name: canonFriend(name), bal: 0, items: [] });
+      return byKey.get(key);
+    };
+    expenses.forEach(e => {
+      if (!e.split || !inScope(e.split.group)) return;
+      const shares = e.split.shares || {};
+      if (e.split.paidBy) {
+        const f = get(e.split.paidBy);
+        f.bal -= e.amount;
+        f.items.push({ kind: 'bill', e, effect: -e.amount });
+      } else {
+        Object.entries(shares).forEach(([name, amt]) => {
+          if (!amt) return;
+          const f = get(name);
+          f.bal += amt;
+          f.items.push({ kind: 'bill', e, effect: amt });
+        });
+      }
+    });
+    settlements.forEach(x => {
+      if (!inScope(x.group)) return;
+      const f = get(x.friend);
+      const effect = x.dir === 'in' ? -x.amount : x.amount;
+      f.bal += effect;
+      f.items.push({ kind: 'settle', x, effect });
+    });
+    // A group's members show even before they share anything
+    const g = findGroup(groupId);
+    if (g) g.members.forEach(get);
+    const list = [...byKey.values()];
+    list.forEach(f => {
+      f.bal = round2(f.bal);
+      f.items.sort(byNewest);
+    });
+    return list;
+  }
+
+  function byNewest(a, b) {
+    const x = a.e || a.x, y = b.e || b.x;
+    return y.date.localeCompare(x.date) || (y.createdAt - x.createdAt);
+  }
+
+  const settled = bal => Math.abs(bal) < 0.005;
+
+  function owedTotals(friends) {
+    return {
+      owed: friends.filter(x => x.bal > 0).reduce((t, x) => t + x.bal, 0),
+      owe: friends.filter(x => x.bal < 0).reduce((t, x) => t - x.bal, 0),
+    };
+  }
+
+  // Split tab screen: the overview, one group (local or cloud = shared), or one friend
+  let splitNav = { group: null, friend: null, cloud: null };
+
+  function balanceText(f) {
+    if (settled(f.bal)) return { cls: 'muted', short: 'settled up', long: `You and ${f.name} are all settled up.` };
+    return f.bal > 0
+      ? { cls: 'pos', short: 'owes you', long: `${f.name} owes you ${formatMoney(f.bal)}` }
+      : { cls: 'neg', short: 'you owe', long: `You owe ${f.name} ${formatMoney(-f.bal)}` };
+  }
+
+  function owedSumHtml({ owed, owe }) {
+    return `
+      <div class="owed-sum">
+        <div><div class="lbl">You are owed</div><div class="val pos">${formatMoney(owed)}</div></div>
+        <div><div class="lbl">You owe</div><div class="val neg">${formatMoney(owe)}</div></div>
+      </div>`;
+  }
+
+  function friendRowHtml(x, subText) {
+    const t = balanceText(x);
+    return `
+      <div class="friend-row" data-friend="${escapeHtml(x.name)}">
+        <div class="avatar">${escapeHtml(x.name.charAt(0).toUpperCase())}</div>
+        <div class="info">
+          <div class="name">${escapeHtml(x.name)}</div>
+          <div class="sub">${subText}</div>
+        </div>
+        <div class="bal ${t.cls}">${t.short}${settled(x.bal) ? '' : `<b>${formatMoney(Math.abs(x.bal))}</b>`}</div>
+      </div>`;
+  }
+
+  const sortByBalance = list => [...list].sort((a, b) =>
+    settled(a.bal) - settled(b.bal) || Math.abs(b.bal) - Math.abs(a.bal) || a.name.localeCompare(b.name));
+
+  const fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  // One row of shared activity. friend set = as seen with that friend; otherwise the bill as a whole (group view).
+  function activityRowHtml(it, friend) {
+    const effectHtml = effect => `<div class="amount ${effect > 0 ? 'pos' : 'neg'}">${effect > 0 ? '+' : '−'}${formatMoney(Math.abs(effect))}</div>`;
+    const groupTag = id => {
+      const g = !splitNav.group && findGroup(id);
+      return g ? ` · <span class="group-tag">👥 ${escapeHtml(g.name)}</span>` : '';
+    };
+    if (it.kind === 'settle') {
+      const x = it.x, who = escapeHtml(x.friend);
+      return `
+        <div class="expense" data-settle="${escapeHtml(x.id)}">
+          <div class="icon">💸</div>
+          <div class="info">
+            <div class="title">${x.dir === 'in' ? `${who} paid you` : `You paid ${who}`}</div>
+            <div class="cat">${fmtDate(x.date)}${x.note ? ' · ' + escapeHtml(x.note) : ''}${groupTag(x.group)}</div>
+          </div>${effectHtml(it.effect)}
+        </div>`;
+    }
+    const e = it.e, payer = e.split.paidBy;
+    let who;
+    if (friend) {
+      who = payer ? `${escapeHtml(payer)} paid ${formatMoney(e.split.total)} · your share ${formatMoney(e.amount)}`
+        : `You paid ${formatMoney(e.split.total)} · ${escapeHtml(friend)}'s share ${formatMoney(it.effect)}`;
+    } else {
+      who = payer ? `${escapeHtml(payer)} paid ${formatMoney(e.split.total)} · you borrowed`
+        : `You paid ${formatMoney(e.split.total)} · you lent`;
+    }
+    return `
+      <div class="expense" style="${rowStyle(e.category, e.subcategory)}" onclick="openEdit('${e.id}')">
+        <div class="icon">${escapeHtml(iconFor(e.category))}</div>
+        <div class="info">
+          <div class="title">${escapeHtml(e.note || detailOf(e) || e.subcategory || e.category)}</div>
+          <div class="cat">${fmtDate(e.date)} · ${who}${groupTag(e.split.group)}</div>
+        </div>${effectHtml(it.effect)}
+      </div>`;
+  }
+
+  function renderSplitTab() {
+    const el = document.getElementById('splitContent');
+    if (splitNav.cloud) {
+      const cg = cloud.groups.get(splitNav.cloud);
+      if (cg) { renderCloudGroupView(el, cg); return paintReportSelection(); }
+      if (cloud.user) {
+        el.innerHTML = `<div class="card"><div class="friend-head"><button class="back-btn" data-action="split-back">‹ Split</button>
+          <h2>☁️ Loading…</h2></div><p class="hint">Waiting for the shared group. If it doesn't appear, you may no longer be in it.</p>
+          ${cloud.problem ? `<p class="hint"><b>Problem reaching Firebase:</b> ${escapeHtml(cloud.problem)}. Retrying…</p>` : ''}</div>`;
+        return;
+      }
+      splitNav.cloud = null;
+    }
+    // Shared groups load in the background, so signing in later is a single tap
+    if (!cloud.loading) loadCloud().catch(() => cloudChanged());
+    const friends = friendBalances();
+    const g = findGroup(splitNav.group);
+    const f = !g && splitNav.friend && friends.find(x => x.name.toLowerCase() === splitNav.friend.toLowerCase());
+    if (g) { renderGroupView(el, g); return paintReportSelection(); }
+    if (f) return renderFriendView(el, f);
+    splitNav = { group: null, friend: null, cloud: null };
+
+    if (!friends.length && !groups.length) {
+      el.innerHTML = `<div class="card">${upiRowHtml()}</div>` + cloudCardHtml() + `<div class="empty">👥 No bills on this device yet.<br>When adding an expense, turn on <b>Split with friends</b>.<br>
+        Only your share counts as your spending; what friends owe shows up here.
+        <br><button class="btn primary" data-action="new-group">Create a group on this device</button></div>`;
+      return;
+    }
+    const groupRows = groups.map(gr => {
+      const t = owedTotals(friendBalances(gr.id));
+      const net = round2(t.owed - t.owe);
+      const bal = settled(net) ? `<div class="bal muted">settled up</div>`
+        : net > 0 ? `<div class="bal pos">you are owed<b>${formatMoney(net)}</b></div>`
+        : `<div class="bal neg">you owe<b>${formatMoney(-net)}</b></div>`;
+      return `
+        <div class="friend-row" data-group="${escapeHtml(gr.id)}">
+          <div class="avatar group">👥</div>
+          <div class="info">
+            <div class="name">${escapeHtml(gr.name)}</div>
+            <div class="sub">You + ${gr.members.length} member${gr.members.length === 1 ? '' : 's'}</div>
+          </div>${bal}
+        </div>`;
+    }).join('');
+    const totals = owedTotals(friends);
+    cloud.groups.forEach(cg => {
+      const t = cloudGroupState(cg);
+      totals.owed += t.owed;
+      totals.owe += t.owe;
+    });
+    el.innerHTML = `
+      <div class="card">
+        ${owedSumHtml(totals)}
+        <p class="hint" style="text-align:center">All-time balances across groups and one-off bills.</p>
+        ${upiRowHtml()}
+      </div>
+      ${cloudCardHtml()}
+      <div class="card">
+        <div class="card-head"><h2>Groups on this device</h2><button class="link-btn" data-action="new-group">＋ New group</button></div>
+        ${groupRows || '<p class="hint" style="margin-top:4px">Make a group for a trip or flatmates to see what you owe and are owed in each.</p>'}
+      </div>
+      ${friends.length ? `
+      <div class="card">
+        <h2>Friends on this device</h2>
+        ${sortByBalance(friends).map(x => friendRowHtml(x, `${x.items.length} shared item${x.items.length === 1 ? '' : 's'}`)).join('')}
+      </div>` : ''}`;
+  }
+
+  function renderGroupView(el, g) {
+    const members = friendBalances(g.id);
+    const simp = g.simplify ? localGroupSimplified(g) : null;
+    if (simp) members.forEach(m => { m.bal = simp.balWith(m.name); });
+    // Each bill once (it shows up under every friend on it), with what it did to your balance overall
+    const items = [];
+    expenses.forEach(e => {
+      if (!e.split || e.split.group !== g.id) return;
+      const lent = round2(Object.values(e.split.shares || {}).reduce((t, v) => t + v, 0));
+      items.push({ kind: 'bill', e, effect: e.split.paidBy ? -e.amount : lent });
+    });
+    settlements.forEach(x => {
+      if (x.group === g.id) items.push({ kind: 'settle', x, effect: x.dir === 'in' ? -x.amount : x.amount });
+    });
+    items.sort(byNewest);
+    el.innerHTML = `
+      <div class="card">
+        <div class="friend-head">
+          <button class="back-btn" data-action="split-back">‹ Split</button>
+          <h2>👥 ${escapeHtml(g.name)}</h2>
+          <button class="link-btn" data-action="edit-group">Edit</button>
+        </div>
+        ${owedSumHtml(owedTotals(members))}
+        <div class="btn-row">
+          <button class="btn secondary" data-action="share">📤 Share</button>
+          <button class="btn primary" data-action="group-add">+ Add expense</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Members</h2>
+        ${members.length ? sortByBalance(members).map(x => friendRowHtml(x, 'Tap to settle up in this group')).join('')
+          : '<p class="hint" style="margin-top:0">No members yet. Tap Edit to add some.</p>'}
+      </div>
+      ${simp ? transfersHtml(simp.transfers, { local: g.id }) : ''}
+      ${spendingReportHtml(localGroupSpending(g))}
+      <div class="card">
+        <h2>Activity</h2>
+        ${items.length ? `<div class="items">${items.map(it => activityRowHtml(it)).join('')}</div>
+          <p class="hint">+ means friends owe you more, − means you owe more (or got paid back).</p>`
+          : '<p class="hint" style="margin-top:0">No bills in this group yet.</p>'}
+      </div>`;
+  }
+
+  function renderFriendView(el, f) {
+    const t = balanceText(f);
+    el.innerHTML = `
+      <div class="card">
+        <div class="friend-head">
+          <button class="back-btn" data-action="split-back">‹ Split</button>
+          <h2>${escapeHtml(f.name)}</h2>
+        </div>
+        <div class="friend-bal ${t.cls}">${escapeHtml(t.long)}</div>
+        <div class="btn-row" style="margin-top:0">
+          <button class="btn secondary" data-action="share">📤 Share</button>
+          <button class="btn primary" data-action="settle">💸 Settle up</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Shared activity</h2>
+        <div class="items">${f.items.map(it => activityRowHtml(it, f.name)).join('')}</div>
+        <p class="hint">+ means ${escapeHtml(f.name)} owes you more, − means you owe more (or they paid you back).</p>
+      </div>`;
+  }
+
+  // Add expense from a group: split already on, with the group's members
+  function openAddForGroup(id) {
+    openAdd();
+    split.on = true;
+    applyGroup(id);
+    renderSplit();
+  }
+
+  document.getElementById('splitContent').addEventListener('click', ev => {
+    if (ev.target.closest('[data-action="my-upi"]')) return editMyUpi();
+    const tr = ev.target.closest('[data-transfer]');
+    if (tr) return recordTransfer(Number(tr.dataset.transfer));
+    const rep = ev.target.closest('[data-report]');
+    if (rep) {
+      reportSel = reportSel === rep.dataset.report ? null : rep.dataset.report;
+      return paintReportSelection();
+    }
+    if (handleCloudClick(ev)) return;
+    const groupRow = ev.target.closest('[data-group]');
+    if (groupRow) { splitNav = { group: groupRow.dataset.group, friend: null }; reportSel = null; window.scrollTo(0, 0); return renderSplitTab(); }
+    const row = ev.target.closest('[data-friend]');
+    if (row) {
+      // Inside a group, tapping a member settles up within the group
+      if (splitNav.group) return openSettle(row.dataset.friend, null, splitNav.group);
+      splitNav = { group: null, friend: row.dataset.friend };
+      window.scrollTo(0, 0);
+      return renderSplitTab();
+    }
+    const action = ev.target.closest('[data-action]');
+    const act = action && action.dataset.action;
+    if (act === 'split-back') { splitNav = { group: null, friend: null, cloud: null }; return renderSplitTab(); }
+    if (act === 'settle') return openSettle(splitNav.friend);
+    if (act === 'new-group') return openGroupModal();
+    if (act === 'edit-group') return openGroupModal(splitNav.group);
+    if (act === 'group-add') return openAddForGroup(splitNav.group);
+    if (act === 'share') return openShare();
+    const s = ev.target.closest('[data-settle]');
+    if (s) openSettle(null, s.dataset.settle);
+  });
+
+  // ---- Settle up ----
+
+  let settleId = null;   // settlement being edited
+  let settleDir = 'in';
+  let settleCloud = null; // { gid, pid } when the form is for a shared group
+
+  function setSettleDir(dir) {
+    settleDir = dir;
+    const memberSel = document.getElementById('settleMember');
+    const name = (settleCloud ? memberSel.selectedOptions[0] && memberSel.selectedOptions[0].textContent
+      : document.getElementById('settleFriend').value.trim()) || 'They';
+    const [inBtn, outBtn] = document.querySelectorAll('#settleDir button');
+    inBtn.textContent = `${name} paid me`;
+    outBtn.textContent = `I paid ${name === 'They' ? 'them' : name}`;
+    inBtn.classList.toggle('active', dir === 'in');
+    outBtn.classList.toggle('active', dir === 'out');
+    updateUpiBox(true);
+  }
+
+  // New settlement prefilled to clear the friend's balance (within groupId, if given), or an existing one to edit
+  // Shows the settle form's fields for a local friend (cloud = false) or a shared group's member
+  function settleMode(isCloud) {
+    document.getElementById('settleFriendField').hidden = isCloud;
+    document.getElementById('settleFriend').required = !isCloud;
+    document.getElementById('settleGroupField').hidden = isCloud;
+    document.getElementById('settleMemberField').hidden = !isCloud;
+  }
+
+  function openSettle(friend, id, groupId) {
+    settleCloud = null;
+    upiPayeeName = null;
+    settleMode(false);
+    const x = id && settlements.find(s => s.id === id);
+    settleId = x ? x.id : null;
+    fillFriendList();
+    const group = x ? (findGroup(x.group) ? x.group : '') : findGroup(groupId) ? groupId : '';
+    const f = friend && friendBalances(group || undefined).find(b => b.name.toLowerCase() === friend.toLowerCase());
+    const sg = !x && f && findGroup(group);
+    if (sg && sg.simplify) f.bal = localGroupSimplified(sg).balWith(f.name);
+    document.getElementById('settleTitle').textContent = x ? 'Edit payment' : 'Settle up';
+    document.getElementById('settleFriend').value = x ? x.friend : friend || '';
+    document.getElementById('settleAmount').value = x ? x.amount : f && !settled(f.bal) ? Math.abs(f.bal) : '';
+    document.getElementById('settleDate').value = x ? x.date : todayISO();
+    document.getElementById('settleNote').value = x ? x.note || '' : '';
+    document.getElementById('settleGroup').innerHTML = groupOptions(group, false);
+    document.getElementById('settleGroup').value = group;
+    document.getElementById('settleDeleteBtn').style.display = x ? '' : 'none';
+    setSettleDir(x ? x.dir : f && f.bal < 0 ? 'out' : 'in');
+    openModal('settleModal');
+  }
+
+  document.getElementById('settleFriend').addEventListener('input', () => setSettleDir(settleDir));
+  document.getElementById('settleDir').addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (b) setSettleDir(b.dataset.dir);
+  });
+  document.getElementById('settleAmount').addEventListener('input', ev => {
+    const v = evalAmount(ev.target.value);
+    ev.target.setCustomValidity(v > 0 ? '' : 'Enter an amount more than 0');
+  });
+
+  document.getElementById('settleMember').addEventListener('change', () => setSettleDir(settleDir));
+  document.getElementById('settleAmount').addEventListener('input', () => updateUpiBox(false));
+  document.getElementById('upiId').addEventListener('input', () => updateUpiBox(false));
+  document.getElementById('upiPay').addEventListener('click', ev => {
+    const payee = settlePayee();
+    const vpa = document.getElementById('upiId').value.trim();
+    if (!isUpiId(vpa)) { ev.preventDefault(); return; }
+    if (payee && !payee.fixed) rememberUpi(payee.name, vpa);
+  });
+
+  document.getElementById('settleForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const payee = settlePayee(), vpa = document.getElementById('upiId').value.trim();
+    if (payee && !payee.fixed && isUpiId(vpa)) rememberUpi(payee.name, vpa);
+    if (settleCloud) return saveCloudPayment();
+    const amount = evalAmount(document.getElementById('settleAmount').value);
+    const friend = canonFriend(document.getElementById('settleFriend').value);
+    const date = document.getElementById('settleDate').value;
+    if (!(amount > 0) || !friend || !date) return;
+    const data = { friend, amount, dir: settleDir, date, note: document.getElementById('settleNote').value.trim() };
+    const group = document.getElementById('settleGroup').value;
+    const x = settleId && settlements.find(s => s.id === settleId);
+    if (x) {
+      Object.assign(x, data);
+      if (group) x.group = group; else delete x.group;
+    } else {
+      settlements.push({ id: newId(), createdAt: Date.now(), ...data, ...(group ? { group } : {}) });
+    }
+    saveSettlements();
+    if (!splitNav.group) splitNav = { group: null, friend };
+    closeModal('settleModal');
+    render();
+  });
+
+  document.getElementById('settleDeleteBtn').addEventListener('click', () => {
+    if (settleCloud) return deleteCloudPayment();
+    if (!settleId || !confirm('Delete this payment?')) return;
+    settlements = settlements.filter(s => s.id !== settleId);
+    saveSettlements();
+    closeModal('settleModal');
+    render();
+  });
+
+  // ---- Groups ----
+
+  // Group open in the group form. For a shared group (cloud = id, or 'new'): members = names to add,
+  // existing = [{ id, name, removable }] already in it, removed = ids to take out
+  let groupEdit = { id: null, cloud: null, members: [], existing: [], removed: [] };
+
+  function renderGroupMembers() {
+    const existing = groupEdit.existing.filter(m => !groupEdit.removed.includes(m.id));
+    document.getElementById('groupMembers').innerHTML = existing.map(m =>
+      `<span class="chip">${escapeHtml(m.name)}${m.removable
+        ? `<button type="button" data-remove-existing="${escapeHtml(m.id)}" aria-label="Remove ${escapeHtml(m.name)}">✕</button>` : '<span style="width:8px"></span>'}</span>`).join('') +
+      groupEdit.members.map((m, i) =>
+      `<span class="chip">${escapeHtml(m)}<button type="button" data-remove="${i}" aria-label="Remove ${escapeHtml(m)}">✕</button></span>`).join('');
+  }
+
+  function openGroupModal(id) {
+    const g = findGroup(id);
+    groupEdit = { id: g ? g.id : null, cloud: null, members: g ? [...g.members] : [], existing: [], removed: [] };
+    document.getElementById('groupSimplify').checked = !!(g && g.simplify);
+    document.getElementById('groupHint').textContent = "You're always in the group. When adding a split bill, pick the group and its members fill in for you.";
+    document.getElementById('groupDeleteBtn').textContent = 'Delete';
+    fillFriendList();
+    document.getElementById('groupTitle').textContent = g ? 'Edit group' : 'New group';
+    document.getElementById('groupName').value = g ? g.name : '';
+    document.getElementById('groupMemberInput').value = '';
+    document.getElementById('groupDeleteBtn').style.display = g ? '' : 'none';
+    renderGroupMembers();
+    openModal('groupModal');
+    if (!g) setTimeout(() => document.getElementById('groupName').focus(), 50);
+  }
+
+  function addGroupMember() {
+    const input = document.getElementById('groupMemberInput');
+    const name = canonFriend(input.value);
+    input.value = '';
+    if (!name || groupEdit.members.some(m => m.toLowerCase() === name.toLowerCase())) return;
+    if (groupEdit.existing.some(m => !groupEdit.removed.includes(m.id) && m.name.toLowerCase() === name.toLowerCase())) return;
+    groupEdit.members.push(name);
+    renderGroupMembers();
+  }
+
+  document.getElementById('groupMemberAdd').addEventListener('click', addGroupMember);
+  document.getElementById('groupMemberInput').addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' || ev.key === ',') { ev.preventDefault(); addGroupMember(); }
+  });
+  document.getElementById('groupMemberInput').addEventListener('input', ev => {
+    if ((ev.inputType === 'insertReplacementText' || ev.inputType === undefined) && knownFriends().includes(ev.target.value)) addGroupMember();
+  });
+  document.getElementById('groupMembers').addEventListener('click', ev => {
+    const ex = ev.target.closest('[data-remove-existing]');
+    if (ex) {
+      groupEdit.removed.push(ex.dataset.removeExisting);
+      return renderGroupMembers();
+    }
+    const b = ev.target.closest('[data-remove]');
+    if (!b) return;
+    groupEdit.members.splice(Number(b.dataset.remove), 1);
+    renderGroupMembers();
+  });
+
+  document.getElementById('groupForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    // A name still in the box counts as added
+    if (document.getElementById('groupMemberInput').value.trim()) addGroupMember();
+    const name = document.getElementById('groupName').value.trim();
+    if (!name) return;
+    if (groupEdit.cloud) return saveCloudGroupForm(name);
+    const g = findGroup(groupEdit.id);
+    const clash = groupNamed(name);
+    if (clash && clash !== g) return alert(`There's already a group called "${clash.name}".`);
+    const simplify = document.getElementById('groupSimplify').checked;
+    if (g) Object.assign(g, { name, members: groupEdit.members, simplify });
+    else groups.push({ id: newId(), name, members: groupEdit.members, simplify, createdAt: Date.now() });
+    saveGroups();
+    splitNav = { group: g ? g.id : groups[groups.length - 1].id, friend: null };
+    closeModal('groupModal');
+    render();
+  });
+
+  document.getElementById('groupDeleteBtn').addEventListener('click', () => {
+    if (groupEdit.cloud) return leaveOrDeleteCloudGroup();
+    const g = findGroup(groupEdit.id);
+    if (!g || !confirm(`Delete the group "${g.name}"? Its bills and payments stay, just not grouped.`)) return;
+    groups = groups.filter(x => x.id !== g.id);
+    saveGroups();
+    splitNav = { group: null, friend: null };
+    closeModal('groupModal');
+    render();
+  });
+
+  // ---------- Sharing a split summary ----------
+  // Friends get a message and, optionally, a link to this app with a read-only snapshot packed into
+  // the part after # (browsers never send that to the server). Snapshot, all from your point of view:
+  // { v: 1, k: 'g' (group) | 'f' (friend), n: name, by: your name, at: date,
+  //   bal: [[friend, balance (> 0 = they owe you)]],
+  //   b: [[date, title, total, payer ('' = you), { '': your share, friend: share }]],
+  //   s: [[date, friend, 'in' (they paid you) | 'out', amount]] }
+
+  const MY_NAME_KEY = 'moneyManager.myName';
+  const SHARE_PREFIX = '#share=';
+  const SHARE_MAX_LINES = 15;
+
+  function shareSnapshot(by) {
+    const g = findGroup(splitNav.group);
+    const billTitle = e => e.note || detailOf(e) || e.subcategory || e.category;
+    if (g) {
+      return {
+        v: 1, k: 'g', n: g.name, by, at: todayISO(),
+        bal: friendBalances(g.id).map(f => [f.name, f.bal]),
+        b: expenses.filter(e => e.split && e.split.group === g.id)
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .map(e => [e.date, billTitle(e), e.split.total, e.split.paidBy || '', { '': e.amount, ...e.split.shares }]),
+        s: settlements.filter(x => x.group === g.id)
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .map(x => [x.date, x.friend, x.dir, x.amount]),
+      };
+    }
+    const f = friendBalances().find(x => x.name.toLowerCase() === (splitNav.friend || '').toLowerCase());
+    if (!f) return null;
+    // Only what's between you two: other friends' shares stay out of it
+    return {
+      v: 1, k: 'f', n: f.name, by, at: todayISO(),
+      bal: [[f.name, f.bal]],
+      b: f.items.filter(it => it.kind === 'bill').map(({ e }) => {
+        const key = Object.keys(e.split.shares || {}).find(k => k.toLowerCase() === f.name.toLowerCase());
+        return [e.date, billTitle(e), e.split.total, e.split.paidBy || '', { '': e.amount, [f.name]: key ? e.split.shares[key] : 0 }];
+      }),
+      s: f.items.filter(it => it.kind === 'settle').map(({ x }) => [x.date, x.friend, x.dir, x.amount]),
+    };
+  }
+
+  // Plain-text summary for chat apps
+  function shareMessage(snap, link) {
+    const me = snap.by;
+    const short = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    const lines = [snap.k === 'g' ? `👥 ${snap.n}: split summary from ${me}` : `${me} & ${snap.n}: split summary`,
+      `As of ${fmtDate(snap.at)}`, '', 'Balances:'];
+    snap.bal.forEach(([name, bal]) => lines.push(settled(bal) ? `• ${name}: settled up`
+      : bal > 0 ? `• ${name} owes ${me} ${formatMoney(bal)}` : `• ${me} owes ${name} ${formatMoney(-bal)}`));
+    if (!snap.bal.length) lines.push('• Nothing yet');
+    const named = k => k || me;
+    if (snap.b.length) {
+      lines.push('', 'Bills:');
+      snap.b.slice(0, SHARE_MAX_LINES).forEach(([date, title, total, payer, shares]) => {
+        lines.push(`• ${short(date)} · ${title} ${formatMoney(total)}, paid by ${named(payer)} (${shareParts(total, shares, named).join(', ')})`);
+      });
+      if (snap.b.length > SHARE_MAX_LINES) lines.push(`• …and ${snap.b.length - SHARE_MAX_LINES} more`);
+    }
+    if (snap.s.length) {
+      lines.push('', 'Payments:');
+      snap.s.slice(0, SHARE_MAX_LINES).forEach(([date, friend, dir, amount]) =>
+        lines.push(`• ${short(date)} · ${dir === 'in' ? `${friend} paid ${me}` : `${me} paid ${friend}`} ${formatMoney(amount)}`));
+      if (snap.s.length > SHARE_MAX_LINES) lines.push(`• …and ${snap.s.length - SHARE_MAX_LINES} more`);
+    }
+    const upi = localStorage.getItem(MY_UPI_KEY);
+    if (upi && snap.bal.some(([, bal]) => bal > 0)) lines.push('', `Pay ${me} by UPI: ${upi}`);
+    if (link) lines.push('', `See the details: ${link}`);
+    return lines.join('\n');
+  }
+
+  function toBase64Url(bytes) {
+    let bin = '';
+    bytes.forEach(b => { bin += String.fromCharCode(b); });
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function fromBase64Url(text) {
+    const bin = atob(text.replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(bin, c => c.charCodeAt(0));
+  }
+
+  // Snapshot -> link; compressed where the browser can, with a leading z (compressed) or j (plain JSON)
+  async function shareLink(snap) {
+    let bytes = new TextEncoder().encode(JSON.stringify(snap)), tag = 'j';
+    if (window.CompressionStream) {
+      const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+      tag = 'z';
+    }
+    return location.origin + location.pathname + SHARE_PREFIX + tag + toBase64Url(bytes);
+  }
+
+  async function readShareLink(hash) {
+    const data = hash.slice(SHARE_PREFIX.length), tag = data[0];
+    let bytes = fromBase64Url(data.slice(1));
+    if (tag === 'z') {
+      if (!window.DecompressionStream) throw new Error('old browser');
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    } else if (tag !== 'j') throw new Error('bad link');
+    return cleanSnapshot(JSON.parse(new TextDecoder().decode(bytes)));
+  }
+
+  // Links come from anywhere: keep only well-formed fields, as plain strings and numbers
+  function cleanSnapshot(o) {
+    if (!o || o.v !== 1) throw new Error('bad link');
+    const str = v => String(v ?? '').slice(0, 200);
+    const num = v => (isFinite(Number(v)) ? Number(v) : 0);
+    const date = v => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? v : todayISO());
+    const arr = v => (Array.isArray(v) ? v.slice(0, 1000) : []);
+    return {
+      k: o.k === 'g' ? 'g' : 'f', n: str(o.n), by: str(o.by) || 'Your friend', at: date(o.at),
+      bal: arr(o.bal).filter(Array.isArray).map(([n, b]) => [str(n), num(b)]),
+      b: arr(o.b).filter(Array.isArray).map(([d, t, total, payer, shares]) => [date(d), str(t), num(total), str(payer),
+        Object.fromEntries(Object.entries(shares && typeof shares === 'object' ? shares : {}).slice(0, 50).map(([k, v]) => [str(k), num(v)]))]),
+      s: arr(o.s).filter(Array.isArray).map(([d, f, dir, amt]) => [date(d), str(f), dir === 'in' ? 'in' : 'out', num(amt)]),
+    };
+  }
+
+  // "You ₹200 · Alice ₹200", plus "others" for shares left out of a one-friend summary
+  function shareParts(total, shares, named) {
+    const list = Object.entries(shares).filter(([, v]) => v > 0);
+    const parts = list.map(([k, v]) => `${named(k)} ${formatMoney(v)}`);
+    const rest = round2(total - list.reduce((t, [, v]) => t + v, 0));
+    if (rest > 0) parts.push(`others ${formatMoney(rest)}`);
+    return parts;
+  }
+
+  let shareState = null; // { snap, link } while the share sheet is open
+
+  async function openShare() {
+    let me = localStorage.getItem(MY_NAME_KEY);
+    if (!me) {
+      me = (prompt('Your name, so friends know who “you” are in the summary:') || '').trim();
+      if (!me) return;
+      localStorage.setItem(MY_NAME_KEY, me);
+    }
+    const snap = shareSnapshot(me);
+    if (!snap) return;
+    shareState = { snap, link: await shareLink(snap) };
+    document.getElementById('shareLink').closest('label').hidden = false;
+    document.getElementById('shareText').nextElementSibling.hidden = false;
+    document.getElementById('shareTitle').textContent = `Share ${snap.k === 'g' ? snap.n : 'with ' + snap.n}`;
+    document.getElementById('shareSend').hidden = !navigator.share;
+    updateShareText();
+    openModal('shareModal');
+  }
+
+  function updateShareText() {
+    if (shareState.text) return; // fixed message, e.g. an invite
+    const withLink = document.getElementById('shareLink').checked;
+    document.getElementById('shareText').value = shareMessage(shareState.snap, withLink ? shareState.link : '');
+  }
+
+  // Share sheet with a ready-made message
+  function openShareText(title, text) {
+    shareState = { text };
+    document.getElementById('shareTitle').textContent = title;
+    document.getElementById('shareText').value = text;
+    document.getElementById('shareLink').closest('label').hidden = true;
+    document.getElementById('shareText').nextElementSibling.hidden = true;
+    document.getElementById('shareSend').hidden = !navigator.share;
+    openModal('shareModal');
+  }
+
+  document.getElementById('shareLink').addEventListener('change', updateShareText);
+  document.getElementById('shareCopy').addEventListener('click', async () => {
+    const text = document.getElementById('shareText').value;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const box = document.getElementById('shareText');
+      box.select();
+      document.execCommand('copy');
+    }
+    const btn = document.getElementById('shareCopy');
+    btn.textContent = '✓ Copied';
+    setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+  });
+  document.getElementById('shareSend').addEventListener('click', () => {
+    navigator.share({ title: document.getElementById('shareTitle').textContent, text: document.getElementById('shareText').value })
+      .catch(() => {}); // closed the share sheet
+  });
+
+  // The read-only page a friend sees; the viewer's own data is never touched
+  async function showSharedView() {
+    const isShared = location.hash.startsWith(SHARE_PREFIX);
+    document.body.classList.toggle('shared-mode', isShared);
+    const el = document.getElementById('sharedView');
+    el.hidden = !isShared;
+    if (!isShared) return false;
+    window.scrollTo(0, 0);
+    let snap;
+    try {
+      snap = await readShareLink(location.hash);
+    } catch {
+      el.innerHTML = `<div class="empty">This share link is incomplete or can't be opened in this browser.
+        <br><button class="btn primary" data-action="leave-shared">Open Money Manager</button></div>`;
+      return true;
+    }
+    const me = escapeHtml(snap.by);
+    const named = k => (k ? escapeHtml(k) : me);
+    const balRows = snap.bal.map(([name, bal]) => {
+      const text = settled(bal) ? '<div class="bal muted">settled up</div>'
+        : bal > 0 ? `<div class="bal pos">owes ${me}<b>${formatMoney(bal)}</b></div>`
+        : `<div class="bal neg">${me} owes<b>${formatMoney(-bal)}</b></div>`;
+      return `
+        <div class="friend-row" style="cursor:default">
+          <div class="avatar">${escapeHtml(name.charAt(0).toUpperCase())}</div>
+          <div class="info"><div class="name">${escapeHtml(name)}</div></div>${text}
+        </div>`;
+    }).join('');
+    const items = [
+      ...snap.b.map(([date, title, total, payer, shares]) => ({ date, html: `
+        <div class="expense" style="cursor:default">
+          <div class="icon">🧾</div>
+          <div class="info">
+            <div class="title">${escapeHtml(title)}</div>
+            <div class="cat">${fmtDate(date)} · paid by ${named(payer)}</div>
+            <div class="shared-shares">${shareParts(total, shares, named).join(' · ')}</div>
+          </div>
+          <div class="amount">${formatMoney(total)}</div>
+        </div>` })),
+      ...snap.s.map(([date, friend, dir, amount]) => ({ date, html: `
+        <div class="expense" style="cursor:default">
+          <div class="icon">💸</div>
+          <div class="info">
+            <div class="title">${dir === 'in' ? `${escapeHtml(friend)} paid ${me}` : `${me} paid ${escapeHtml(friend)}`}</div>
+            <div class="cat">${fmtDate(date)}</div>
+          </div>
+          <div class="amount">${formatMoney(amount)}</div>
+        </div>` })),
+    ].sort((a, b) => b.date.localeCompare(a.date));
+    el.innerHTML = `
+      <div class="shared-banner">
+        <h1>${snap.k === 'g' ? '👥 ' + escapeHtml(snap.n) : `${me} & ${escapeHtml(snap.n)}`}</h1>
+        <p>Shared by ${me} · as of ${fmtDate(snap.at)} · read-only</p>
+      </div>
+      <div class="card">
+        <h2>Balances</h2>
+        ${balRows || '<p class="hint" style="margin-top:0">Nothing owed yet.</p>'}
+      </div>
+      <div class="card">
+        <h2>Bills & payments</h2>
+        ${items.length ? `<div class="items">${items.map(it => it.html).join('')}</div>` : '<p class="hint" style="margin-top:0">No bills yet.</p>'}
+      </div>
+      <p class="hint" style="text-align:center">This is a snapshot ${me} shared. Ask them for a new link to see later changes.</p>
+      <div class="btn-row"><button class="btn secondary" data-action="leave-shared">Open my own Money Manager</button></div>`;
+    return true;
+  }
+
+  document.getElementById('sharedView').addEventListener('click', ev => {
+    if (!ev.target.closest('[data-action="leave-shared"]')) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    showSharedView();
+    render();
+  });
+  window.addEventListener('hashchange', () => { showSharedView(); });
+
+  // ---------- Shared groups (live, via Firebase) ----------
+  // Optional. A shared group lives in Firestore so everyone in it sees the same bills and payments and
+  // can add to them. Each person's own share of a bill becomes an expense in their own Money Manager
+  // (id sb_<group>_<bill>, entry.shared = { g, b }) in a category they choose (bill.cats[uid]).
+  // Only shared groups go to Firebase; personal expenses stay on the device and its own sync.
+  // Data shapes and who may do what: see firestore.rules.
+
+  const FIREBASE_CONFIG = {
+    apiKey: 'AIzaSyCc5EbX-hB_bStDN5XCMck21hnvlonf1Zs',
+    authDomain: 'moneymanager-713e3.firebaseapp.com',
+    projectId: 'moneymanager-713e3',
+    storageBucket: 'moneymanager-713e3.firebasestorage.app',
+    messagingSenderId: '340409300891',
+    appId: '1:340409300891:web:22f507c3f0b47550f3d33e',
+  };
+  const FIREBASE_SDK = 'https://www.gstatic.com/firebasejs/13.0.0/';
+  const CLOUD_KEY = 'moneyManager.cloud.v1'; // set once signed in here, so it reconnects on start
+  const JOIN_PREFIX = '#join=';
+  // For testing against local Firebase emulators: open the app from this computer with ?emulator
+  const CLOUD_EMULATOR = new URLSearchParams(location.search).has('emulator') &&
+    (location.protocol === 'file:' || ['localhost', '127.0.0.1'].includes(location.hostname));
+
+  const cloud = {
+    fb: null, auth: null, db: null,   // Firebase SDK functions and handles once loaded
+    loading: null,                    // promise while/after loading
+    failed: false,                    // couldn't load (offline?)
+    user: null,                       // { uid, name, email } when signed in
+    groups: new Map(),                // gid -> group
+    bills: new Map(),                 // gid -> Map(bid -> bill)
+    payments: new Map(),              // gid -> Map(pid -> payment)
+    upis: new Map(),                  // gid -> Map(uid -> UPI ID each member published)
+    watchers: new Map(),              // gid -> [unsubscribe]
+    stopGroups: null,
+    problem: '',                      // last error reading shared groups, shown until things work again
+  };
+
+  function loadCloud() {
+    if (!cloud.loading) {
+      cloud.loading = (async () => {
+        const [app, auth, fs] = await Promise.all(['firebase-app', 'firebase-auth', 'firebase-firestore']
+          .map(m => import(FIREBASE_SDK + m + '.js')));
+        cloud.fb = { ...app, ...auth, ...fs };
+        const fbApp = app.initializeApp(FIREBASE_CONFIG);
+        cloud.auth = auth.getAuth(fbApp);
+        // Kept on the device too, so shared groups open (and take new bills) offline
+        cloud.db = fs.initializeFirestore(fbApp, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) });
+        if (CLOUD_EMULATOR) {
+          auth.connectAuthEmulator(cloud.auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+          fs.connectFirestoreEmulator(cloud.db, '127.0.0.1', 8080);
+        }
+        cloud.failed = false;
+        await new Promise(resolve => auth.onAuthStateChanged(cloud.auth, user => { onCloudUser(user); resolve(); }));
+      })().catch(err => {
+        cloud.loading = null;
+        cloud.failed = true;
+        throw err;
+      });
+    }
+    return cloud.loading;
+  }
+
+  async function signInCloud() {
+    await loadCloud();
+    const res = await cloud.fb.signInWithPopup(cloud.auth, new cloud.fb.GoogleAuthProvider());
+    onCloudUser(res.user);
+  }
+
+  async function signOutCloud() {
+    if (!confirm('Sign out of shared groups on this device? Your expenses stay; shared bills stop updating here until you sign in again.')) return;
+    localStorage.removeItem(CLOUD_KEY);
+    await cloud.fb.signOut(cloud.auth);
+  }
+
+  function stopCloudWatchers() {
+    if (cloud.stopGroups) cloud.stopGroups();
+    cloud.stopGroups = null;
+    cloud.watchers.forEach(stops => stops.forEach(stop => stop()));
+    cloud.watchers.clear();
+    cloud.groups.clear();
+    cloud.bills.clear();
+    cloud.payments.clear();
+    cloud.upis.clear();
+  }
+
+  function onCloudUser(user) {
+    if (user && cloud.user && cloud.user.uid === user.uid) return; // already set up
+    stopCloudWatchers();
+    cloud.user = user ? { uid: user.uid, name: user.displayName || (user.email || '').split('@')[0] || 'Me', email: user.email || '' } : null;
+    if (user) {
+      localStorage.setItem(CLOUD_KEY, '1');
+      watchGroups(user.uid);
+    }
+    cloudChanged();
+  }
+
+  // Your groups, live. If Firebase refuses (rules not published yet, offline sign-in expired…), keep retrying.
+  function watchGroups(uid, retry = 0) {
+    const { collection, query, where, onSnapshot } = cloud.fb;
+    cloud.stopGroups = onSnapshot(query(collection(cloud.db, 'groups'), where('memberUids', 'array-contains', uid)),
+      snap => { cloud.problem = ''; onGroupsSnapshot(snap); },
+      err => {
+        cloudError(err);
+        cloud.problem = (err && (err.code || err.message)) || String(err);
+        cloud.stopGroups = null;
+        cloudChanged();
+        setTimeout(() => {
+          if (cloud.user && cloud.user.uid === uid && !cloud.stopGroups) watchGroups(uid, retry + 1);
+        }, Math.min(2000 * 2 ** retry, 60000));
+      });
+  }
+
+  function onGroupsSnapshot(snap) {
+    const ids = new Set();
+    snap.forEach(d => {
+      ids.add(d.id);
+      cloud.groups.set(d.id, { id: d.id, members: {}, memberUids: [], ...d.data() });
+      watchGroup(d.id);
+    });
+    [...cloud.groups.keys()].forEach(id => {
+      if (ids.has(id)) return;
+      cloud.groups.delete(id);
+      (cloud.watchers.get(id) || []).forEach(stop => stop());
+      cloud.watchers.delete(id);
+      cloud.bills.delete(id);
+      cloud.payments.delete(id);
+      cloud.upis.delete(id);
+    });
+    // Groups you're no longer in (left, removed, deleted): your shares of their bills stay as plain
+    // expenses. Only trusted from the server, not from a half-filled offline cache.
+    if (!snap.metadata.fromCache) {
+      let changed = false;
+      expenses.forEach(e => {
+        if (e.shared && !ids.has(e.shared.g)) { delete e.shared; changed = true; }
+      });
+      if (changed) { saveExpenses(); render(); }
+    }
+    ids.forEach(id => reconcileGroup(id, false)); // e.g. claiming a name makes its shares yours
+    cloudChanged();
+  }
+
+  function watchGroup(gid, retry = 0) {
+    if (cloud.watchers.has(gid)) return;
+    const { collection, onSnapshot } = cloud.fb;
+    const toMap = snap => new Map(snap.docs.map(d => [d.id, d.data()]));
+    // Refused (e.g. a group just created here isn't on the server yet, or you were just added):
+    // try again shortly while you're still in it
+    const failed = err => {
+      cloudError(err);
+      (cloud.watchers.get(gid) || []).forEach(stop => stop());
+      cloud.watchers.delete(gid);
+      setTimeout(() => { if (cloud.groups.has(gid)) watchGroup(gid, retry + 1); }, Math.min(1000 * 2 ** retry, 30000));
+    };
+    cloud.watchers.set(gid, [
+      onSnapshot(collection(cloud.db, 'groups', gid, 'bills'), snap => {
+        cloud.bills.set(gid, toMap(snap));
+        reconcileGroup(gid, !snap.metadata.fromCache);
+        cloudChanged();
+      }, failed),
+      onSnapshot(collection(cloud.db, 'groups', gid, 'payments'), snap => {
+        cloud.payments.set(gid, toMap(snap));
+        cloudChanged();
+      }, failed),
+      onSnapshot(collection(cloud.db, 'groups', gid, 'upi'), snap => {
+        cloud.upis.set(gid, new Map(snap.docs.map(d => [d.id, d.data().vpa])));
+        publishMyUpi(gid);
+      }, cloudError), // optional extra: if refused (older rules), bills and payments carry on
+    ]);
+  }
+
+  function cloudError(err) {
+    console.warn('Shared groups:', err);
+  }
+
+  // Something in shared groups changed: redraw what shows it
+  let cloudRedraw = null;
+  function cloudChanged() {
+    cancelAnimationFrame(cloudRedraw);
+    cloudRedraw = requestAnimationFrame(() => {
+      if (ui.tab === 'split') renderSplitTab();
+      else if (ui.tab === 'expenses') render(); // ☁️ tags show bill totals
+    });
+  }
+
+  // refused = what to say if Firebase's security rules turn the write down
+  function cloudWrite(promise, refused = "That change wasn't allowed. You may no longer be in this group.") {
+    return promise.catch(err => {
+      cloudError(err);
+      alert(err && err.code === 'permission-denied' ? refused
+        : "Couldn't save that to the shared group: " + ((err && err.message) || err));
+    });
+  }
+
+  function randomId(n) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    return Array.from(crypto.getRandomValues(new Uint8Array(n)), b => chars[b % chars.length]).join('');
+  }
+
+  function myCloudName() {
+    return localStorage.getItem(MY_NAME_KEY) || cloud.user.name;
+  }
+
+  function myMemberId(g) {
+    return g && cloud.user ? Object.keys(g.members || {}).find(id => g.members[id].uid === cloud.user.uid) : undefined;
+  }
+
+  function cloudMemberName(gid, id) {
+    const g = cloud.groups.get(gid);
+    if (g && id === myMemberId(g)) return 'You';
+    return (g && g.members[id] && g.members[id].name) || 'Someone';
+  }
+
+  function activeMembers(g) {
+    return Object.keys(g.members || {}).filter(id => !g.members[id].left);
+  }
+
+  const sharedEntryId = (gid, bid) => `sb_${gid}_${bid}`;
+
+  function sharedEntryTag(e) {
+    const b = cloud.bills.get(e.shared.g) && cloud.bills.get(e.shared.g).get(e.shared.b);
+    const g = cloud.groups.get(e.shared.g);
+    return (b ? `your share of ${formatMoney(b.total)}` : 'shared bill') + (g ? ` · ${escapeHtml(g.name)}` : '');
+  }
+
+  // Category for your share of a bill: your choice (any device), else the adder's if you have it, else "Shared"
+  function sharedCategory(b) {
+    const mine = b.cats && cloud.user && b.cats[cloud.user.uid];
+    const ok = name => { const c = findCategory(name); return c && typeOf(c) === 'expense'; };
+    if (mine && ok(mine.category)) return mine;
+    if (b.category && ok(b.category)) {
+      const c = findCategory(b.category);
+      return { category: c.name, subcategory: c.subs.includes(b.subcategory) ? b.subcategory : '' };
+    }
+    return { category: addCategory('Shared', '👥', null, 'expense') || 'Shared', subcategory: '' };
+  }
+
+  // Keep your expenses in step with a shared group's bills: one expense per bill you have a share in.
+  // complete = the bills came from the server, so a bill missing from them is gone.
+  function reconcileGroup(gid, complete) {
+    const g = cloud.groups.get(gid), bills = cloud.bills.get(gid);
+    if (!g || !bills || !cloud.user) return;
+    const me = myMemberId(g);
+    const seen = new Set();
+    let changed = false;
+    bills.forEach((b, bid) => {
+      const id = sharedEntryId(gid, bid);
+      seen.add(id);
+      const share = !b.deleted && me ? Number((b.shares || {})[me]) || 0 : 0;
+      const i = expenses.findIndex(e => e.id === id);
+      if (share <= 0) {
+        if (i >= 0) { expenses.splice(i, 1); changed = true; }
+        return;
+      }
+      const want = { amount: share, date: b.date, note: b.title || '' };
+      const mine = b.cats && b.cats[cloud.user.uid];
+      if (i < 0) {
+        const cat = sharedCategory(b);
+        expenses.push({ id, createdAt: b.createdAt || Date.now(), type: 'expense', category: cat.category,
+          subcategory: cat.subcategory || '', ...(cat.detail ? { detail: cat.detail } : {}), ...want, shared: { g: gid, b: bid } });
+        changed = true;
+        return;
+      }
+      const e = expenses[i];
+      if (mine && findCategory(mine.category)) Object.assign(want, { category: mine.category, subcategory: mine.subcategory || '' });
+      Object.entries(want).forEach(([k, v]) => { if ((e[k] || '') !== (v || '')) { e[k] = v; changed = true; } });
+      if (!e.shared) { e.shared = { g: gid, b: bid }; changed = true; }
+    });
+    if (complete) {
+      const before = expenses.length;
+      expenses = expenses.filter(e => !(e.shared && e.shared.g === gid && !seen.has(e.id)));
+      changed = changed || expenses.length !== before;
+    }
+    if (changed) {
+      ensureCategoriesFor(expenses.filter(e => e.shared && e.shared.g === gid));
+      saveExpenses();
+      render();
+    }
+  }
+
+  // Who owes whom in a shared group, from your side: rows = [{ id, name, bal (> 0 = they owe you), joined }],
+  // owed / owe totals, and items = bills and payments, newest first, with what each did to your balance
+  function cloudGroupState(g) {
+    const me = myMemberId(g);
+    const debt = {}; // debt[a][b] = what a owes b
+    const add = (a, b, v) => {
+      if (a === b || !v) return;
+      debt[a] = debt[a] || {};
+      debt[a][b] = (debt[a][b] || 0) + v;
+    };
+    const items = [];
+    (cloud.bills.get(g.id) || new Map()).forEach((b, id) => {
+      if (b.deleted) return;
+      const shares = b.shares || {};
+      Object.entries(shares).forEach(([m, v]) => add(m, b.paidBy, Number(v) || 0));
+      const lent = Object.entries(shares).filter(([m]) => m !== me).reduce((t, [, v]) => t + (Number(v) || 0), 0);
+      items.push({ kind: 'bill', id, b, date: b.date, createdAt: b.createdAt || 0,
+        effect: b.paidBy === me ? lent : -(Number(shares[me]) || 0) });
+    });
+    (cloud.payments.get(g.id) || new Map()).forEach((p, id) => {
+      if (p.deleted) return;
+      add(p.to, p.from, Number(p.amount) || 0); // paying someone back = they now owe you that much more
+      items.push({ kind: 'pay', id, p, date: p.date, createdAt: p.createdAt || 0,
+        effect: p.from === me ? Number(p.amount) : p.to === me ? -Number(p.amount) : 0 });
+    });
+    items.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+    const ids = new Set(activeMembers(g));
+    Object.keys(debt).forEach(a => { ids.add(a); Object.keys(debt[a]).forEach(b => ids.add(b)); });
+    ids.delete(me);
+    const rows = [...ids].filter(id => g.members[id]).map(id => ({
+      id, name: g.members[id].name || 'Someone', joined: !!g.members[id].uid, left: !!g.members[id].left,
+      bal: round2(((debt[id] || {})[me] || 0) - ((debt[me] || {})[id] || 0)),
+    })).filter(r => !r.left || !settled(r.bal));
+    // Simplified: everyone's net in the group, settled in as few payments as possible
+    let transfers = null;
+    if (g.simplify) {
+      const nets = new Map();
+      Object.entries(debt).forEach(([a, owes]) => Object.entries(owes).forEach(([b, v]) => {
+        nets.set(a, (nets.get(a) || 0) - v);
+        nets.set(b, (nets.get(b) || 0) + v);
+      }));
+      transfers = simplifyDebts(nets);
+      rows.forEach(r => { r.bal = transferBalance(transfers, me, r.id); });
+    }
+    return { me, rows, items, transfers, ...owedTotals(rows) };
+  }
+
+  function cloudCardHtml() {
+    let body;
+    if (cloud.user) {
+      const rows = [...cloud.groups.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(g => {
+        const t = cloudGroupState(g);
+        const net = round2(t.owed - t.owe);
+        const bal = settled(net) ? `<div class="bal muted">settled up</div>`
+          : net > 0 ? `<div class="bal pos">you are owed<b>${formatMoney(net)}</b></div>`
+          : `<div class="bal neg">you owe<b>${formatMoney(-net)}</b></div>`;
+        const n = activeMembers(g).length;
+        return `
+          <div class="friend-row" data-cloud-group="${escapeHtml(g.id)}">
+            <div class="avatar group">☁️</div>
+            <div class="info">
+              <div class="name">${escapeHtml(g.name || 'Shared group')}</div>
+              <div class="sub">${n} member${n === 1 ? '' : 's'}</div>
+            </div>${bal}
+          </div>`;
+      }).join('');
+      body = (cloud.problem ? `<p class="hint" style="margin-top:4px"><b>Problem reaching Firebase:</b> ${escapeHtml(cloud.problem)}. Retrying…</p>` : '') +
+        (rows || '<p class="hint" style="margin-top:4px">Create a shared group, then send the invite link to friends.</p>') + `
+        <div class="cloud-account"><span>Signed in as ${escapeHtml(cloud.user.email || cloud.user.name)}</span>
+          <button class="link-btn" data-action="cloud-signout">Sign out</button></div>`;
+    } else if (cloud.loading && !cloud.fb && localStorage.getItem(CLOUD_KEY)) {
+      body = '<p class="hint" style="margin-top:4px">Connecting…</p>';
+    } else {
+      body = `<p class="hint" style="margin-top:4px">Split with friends live: everyone in a group sees the same bills and can add them,
+          and each person's share lands in their own expenses.${cloud.failed ? ' <b>Couldn\'t connect. Are you offline?</b>' : ''}</p>
+        <div class="btn-row" style="margin-top:10px"><button class="btn primary" data-action="cloud-signin">Sign in with Google</button></div>`;
+    }
+    return `
+      <div class="card">
+        <div class="card-head"><h2>☁️ Shared groups</h2>${cloud.user ? '<button class="link-btn" data-action="cloud-new">＋ New shared group</button>' : ''}</div>
+        ${body}
+      </div>`;
+  }
+
+  function renderCloudGroupView(el, g) {
+    const t = cloudGroupState(g);
+    const name = id => cloudMemberName(g.id, id);
+    // Joined from an invite while friends had already added you by name: offer to take over that name
+    const unclaimed = activeMembers(g).filter(id => !g.members[id].uid);
+    const fresh = t.me === cloud.user.uid && g.createdBy !== cloud.user.uid &&
+      !t.items.some(it => it.kind === 'bill' ? (it.b.paidBy === t.me || (it.b.shares || {})[t.me]) : (it.p.from === t.me || it.p.to === t.me));
+    const claim = fresh && unclaimed.length ? `
+      <div class="claim-box">Were you already added as one of these? Tap your name to take over its bills.
+        <div class="chips">${unclaimed.map(id => `<button class="chip" data-claim="${escapeHtml(id)}">${escapeHtml(g.members[id].name)}</button>`).join('')}</div>
+      </div>` : '';
+    const activity = t.items.map(it => {
+      const amt = settled(it.effect) ? '<div class="amount" style="color:var(--muted)">—</div>'
+        : `<div class="amount ${it.effect > 0 ? 'pos' : 'neg'}">${it.effect > 0 ? '+' : '−'}${formatMoney(Math.abs(it.effect))}</div>`;
+      if (it.kind === 'pay') {
+        const p = it.p;
+        return `
+          <div class="expense" data-cloud-pay="${escapeHtml(it.id)}">
+            <div class="icon">💸</div>
+            <div class="info">
+              <div class="title">${escapeHtml(name(p.from))} paid ${escapeHtml(p.to === t.me ? 'you' : name(p.to))}</div>
+              <div class="cat">${fmtDate(p.date)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</div>
+            </div>${amt}
+          </div>`;
+      }
+      const b = it.b, payer = name(b.paidBy), myShare = Number((b.shares || {})[t.me]) || 0;
+      const who = b.paidBy === t.me ? `You paid ${formatMoney(b.total)} · you lent`
+        : myShare ? `${escapeHtml(payer)} paid ${formatMoney(b.total)} · you borrowed`
+        : `${escapeHtml(payer)} paid ${formatMoney(b.total)} · not involved`;
+      const e = expenses.find(x => x.id === sharedEntryId(g.id, it.id));
+      return `
+        <div class="expense" ${e ? `style="${rowStyle(e.category, e.subcategory)}"` : ''} data-cloud-bill="${escapeHtml(it.id)}">
+          <div class="icon">${escapeHtml(e ? iconFor(e.category) : '🧾')}</div>
+          <div class="info">
+            <div class="title">${escapeHtml(b.title || 'Bill')}</div>
+            <div class="cat">${fmtDate(b.date)} · ${who}</div>
+          </div>${amt}
+        </div>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="card">
+        <div class="friend-head">
+          <button class="back-btn" data-action="split-back">‹ Split</button>
+          <h2>☁️ ${escapeHtml(g.name || 'Shared group')}</h2>
+          <button class="link-btn" data-action="cloud-edit">Edit</button>
+        </div>
+        ${owedSumHtml(t)}
+        <div class="btn-row">
+          <button class="btn secondary" data-action="cloud-invite">🔗 Invite</button>
+          <button class="btn primary" data-action="cloud-add">+ Add expense</button>
+        </div>
+        ${claim}
+      </div>
+      <div class="card">
+        <h2>Members</h2>
+        ${t.rows.length ? sortByBalance(t.rows).map(r => {
+          const bt = balanceText(r);
+          return `
+          <div class="friend-row" data-member="${escapeHtml(r.id)}">
+            <div class="avatar">${escapeHtml(r.name.charAt(0).toUpperCase())}</div>
+            <div class="info">
+              <div class="name">${escapeHtml(r.name)}</div>
+              <div class="sub">${r.left ? 'left the group' : r.joined ? 'Tap to settle up' : 'Not joined yet · tap to settle up'}</div>
+            </div>
+            <div class="bal ${bt.cls}">${bt.short}${settled(r.bal) ? '' : `<b>${formatMoney(Math.abs(r.bal))}</b>`}</div>
+          </div>`;
+        }).join('') : '<p class="hint" style="margin-top:0">Just you so far. Tap Invite to bring friends in, or Edit to add them by name.</p>'}
+      </div>
+      ${t.transfers ? transfersHtml(t.transfers, { cloud: g.id, me: t.me }) : ''}
+      ${spendingReportHtml(cloudGroupSpending(g))}
+      <div class="card">
+        <h2>Activity</h2>
+        ${activity ? `<div class="items">${activity}</div>
+          <p class="hint">+ means friends owe you more, − means you owe more (or got paid back). Changes show up for everyone.</p>`
+          : '<p class="hint" style="margin-top:0">No bills yet. Anyone in the group can add one.</p>'}
+      </div>`;
+  }
+
+  function handleCloudClick(ev) {
+    const gid = splitNav.cloud;
+    const row = ev.target.closest('[data-cloud-group]');
+    if (row) { splitNav = { group: null, friend: null, cloud: row.dataset.cloudGroup }; reportSel = null; window.scrollTo(0, 0); renderSplitTab(); return true; }
+    const claim = ev.target.closest('[data-claim]');
+    if (claim) { claimCloudMember(gid, claim.dataset.claim); return true; }
+    const member = ev.target.closest('[data-member]');
+    if (member) { openCloudPayment(gid, member.dataset.member); return true; }
+    const bill = ev.target.closest('[data-cloud-bill]');
+    if (bill) { openCloudBill(gid, bill.dataset.cloudBill); return true; }
+    const pay = ev.target.closest('[data-cloud-pay]');
+    if (pay) { openCloudPayment(gid, null, pay.dataset.cloudPay); return true; }
+    const action = ev.target.closest('[data-action]');
+    const act = action && action.dataset.action;
+    if (act === 'cloud-signin') {
+      signInCloud().catch(err => {
+        if (err && err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') alert("Couldn't sign in: " + (err.message || err));
+        cloudChanged();
+      });
+    } else if (act === 'cloud-signout') signOutCloud();
+    else if (act === 'cloud-new') openCloudGroupForm(null);
+    else if (act === 'cloud-edit') openCloudGroupForm(gid);
+    else if (act === 'cloud-invite') openCloudInvite(gid);
+    else if (act === 'cloud-add') openAddForCloud(gid);
+    else return false;
+    return true;
+  }
+
+  // ---- Shared groups: create, edit, leave, invite, join ----
+
+  function openCloudGroupForm(gid) {
+    const g = gid && cloud.groups.get(gid);
+    const t = g && cloudGroupState(g);
+    const involved = id => t.items.some(it => it.kind === 'bill'
+      ? it.b.paidBy === id || (it.b.shares || {})[id] : it.p.from === id || it.p.to === id);
+    groupEdit = {
+      id: null, cloud: g ? g.id : 'new', members: [], removed: [],
+      // People who haven't joined and have no bills yet can be taken out
+      existing: g ? activeMembers(g).filter(id => id !== t.me).map(id => ({
+        id, name: g.members[id].name || 'Someone', removable: !g.members[id].uid && !involved(id),
+      })) : [],
+    };
+    fillFriendList();
+    document.getElementById('groupTitle').textContent = g ? 'Edit shared group' : 'New shared group';
+    document.getElementById('groupSimplify').checked = !!(g && g.simplify);
+    document.getElementById('groupName').value = g ? g.name || '' : '';
+    document.getElementById('groupMemberInput').value = '';
+    document.getElementById('groupHint').textContent = g
+      ? 'Add friends by name to split with them now; when they join from the invite link, they can take over their name.'
+      : "You're in it. Add friends by name now, then send them the invite link so they can join and add bills too.";
+    const del = document.getElementById('groupDeleteBtn');
+    del.style.display = g ? '' : 'none';
+    del.textContent = g && g.createdBy === cloud.user.uid ? 'Delete' : 'Leave';
+    renderGroupMembers();
+    openModal('groupModal');
+    if (!g) setTimeout(() => document.getElementById('groupName').focus(), 50);
+  }
+
+  function saveCloudGroupForm(name) {
+    const { doc, collection, setDoc, updateDoc, deleteField } = cloud.fb;
+    const now = Date.now();
+    if (groupEdit.cloud === 'new') {
+      const ref = doc(collection(cloud.db, 'groups'));
+      const members = { [cloud.user.uid]: { name: myCloudName(), uid: cloud.user.uid, email: cloud.user.email } };
+      groupEdit.members.forEach(n => { members['p_' + randomId(10)] = { name: n }; });
+      cloudWrite(setDoc(ref, { name, createdBy: cloud.user.uid, createdAt: now, updatedAt: now,
+        inviteCode: randomId(24), memberUids: [cloud.user.uid], members, joins: {},
+        simplify: document.getElementById('groupSimplify').checked }),
+        "Firebase refused to create the group. Check the security rules from firestore.rules are published (Firestore Database → Rules).");
+      splitNav = { group: null, friend: null, cloud: ref.id };
+    } else {
+      const changes = { name, simplify: document.getElementById('groupSimplify').checked, updatedAt: now };
+      groupEdit.members.forEach(n => { changes[`members.p_${randomId(10)}`] = { name: n }; });
+      groupEdit.removed.forEach(id => { changes[`members.${id}`] = deleteField(); });
+      cloudWrite(updateDoc(doc(cloud.db, 'groups', groupEdit.cloud), changes));
+    }
+    closeModal('groupModal');
+    renderSplitTab();
+  }
+
+  function leaveOrDeleteCloudGroup() {
+    const g = cloud.groups.get(groupEdit.cloud);
+    if (!g) return;
+    const { doc, updateDoc, deleteDoc, arrayRemove } = cloud.fb;
+    const ref = doc(cloud.db, 'groups', g.id);
+    if (g.createdBy === cloud.user.uid) {
+      if (!confirm(`Delete "${g.name}" for everyone? Bills already in people's expenses stay there as normal expenses.`)) return;
+      cloudWrite(deleteDoc(ref));
+    } else {
+      if (!confirm(`Leave "${g.name}"? Your shares of its bills stay in your expenses, and the others keep the group.`)) return;
+      cloudWrite(updateDoc(ref, { memberUids: arrayRemove(cloud.user.uid), [`members.${myMemberId(g)}.left`]: true, updatedAt: Date.now() }));
+    }
+    splitNav = { group: null, friend: null, cloud: null };
+    closeModal('groupModal');
+    renderSplitTab();
+  }
+
+  function claimCloudMember(gid, pid) {
+    const g = cloud.groups.get(gid);
+    if (!g || !g.members[pid] || g.members[pid].uid) return;
+    if (!confirm(`Are you ${g.members[pid].name}? Their bills in this group become yours.`)) return;
+    const { doc, updateDoc, deleteField } = cloud.fb;
+    cloudWrite(updateDoc(doc(cloud.db, 'groups', gid), {
+      [`members.${pid}.uid`]: cloud.user.uid,
+      [`members.${pid}.email`]: cloud.user.email,
+      [`members.${cloud.user.uid}`]: deleteField(),
+      updatedAt: Date.now(),
+    }));
+  }
+
+  function openCloudInvite(gid) {
+    const g = cloud.groups.get(gid);
+    if (!g) return;
+    const link = location.origin + location.pathname + JOIN_PREFIX +
+      [g.id, g.inviteCode, toBase64Url(new TextEncoder().encode(g.name || ''))].join('.');
+    openShareText(`Invite to ${g.name}`,
+      `Join "${g.name}" on Money Manager so we can split bills together. Everyone sees the same bills, and your share goes into your own expenses:\n${link}`);
+  }
+
+  let pendingJoin = null; // { gid, code, name } from an invite link
+
+  function checkJoinLink() {
+    if (!location.hash.startsWith(JOIN_PREFIX)) return false;
+    const [gid, code, name64] = location.hash.slice(JOIN_PREFIX.length).split('.');
+    let name = '';
+    try { name = new TextDecoder().decode(fromBase64Url(name64 || '')); } catch {}
+    if (!gid || !code) return false;
+    pendingJoin = { gid, code, name: name.slice(0, 100) };
+    document.getElementById('joinText').textContent = `You've been invited to “${pendingJoin.name || 'a shared group'}”.`;
+    document.getElementById('joinBtn').disabled = false;
+    document.getElementById('joinBtn').textContent = cloud.user ? 'Join' : 'Sign in & join';
+    openModal('joinModal');
+    loadCloud().then(() => {
+      document.getElementById('joinBtn').textContent = cloud.user ? 'Join' : 'Sign in & join';
+    }).catch(() => {});
+    return true;
+  }
+
+  function clearJoinLink() {
+    pendingJoin = null;
+    history.replaceState(null, '', location.pathname + location.search);
+    closeModal('joinModal');
+  }
+
+  document.getElementById('joinCancel').addEventListener('click', clearJoinLink);
+  document.getElementById('joinBtn').addEventListener('click', async () => {
+    const join = pendingJoin, btn = document.getElementById('joinBtn');
+    if (!join) return;
+    btn.disabled = true;
+    btn.textContent = 'Joining…';
+    try {
+      if (!cloud.user) await signInCloud();
+      if (!cloud.groups.has(join.gid)) {
+        const { doc, updateDoc, arrayUnion } = cloud.fb;
+        await updateDoc(doc(cloud.db, 'groups', join.gid), {
+          memberUids: arrayUnion(cloud.user.uid),
+          [`members.${cloud.user.uid}`]: { name: myCloudName(), uid: cloud.user.uid, email: cloud.user.email },
+          [`joins.${cloud.user.uid}`]: join.code,
+          updatedAt: Date.now(),
+        });
+      }
+      clearJoinLink();
+      splitNav = { group: null, friend: null, cloud: join.gid };
+      setTab('split');
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = cloud.user ? 'Join' : 'Sign in & join';
+      if (err && (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request')) return;
+      alert(err && (err.code === 'permission-denied' || err.code === 'not-found')
+        ? "This invite link doesn't work any more. Ask for a new one."
+        : "Couldn't join: " + ((err && err.message) || err));
+    }
+  });
+  window.addEventListener('hashchange', checkJoinLink);
+
+  // ---- Shared bills ----
+
+  function applyCloudGroup(gid) {
+    const g = cloud.groups.get(gid);
+    if (!g) return;
+    const me = myMemberId(g);
+    Object.assign(split, { group: '', cloud: gid, friends: activeMembers(g).filter(id => id !== me), paidBy: '', custom: {} });
+  }
+
+  function openAddForCloud(gid) {
+    openAdd();
+    split.on = true;
+    applyCloudGroup(gid);
+    renderSplit();
+  }
+
+  // Open a shared bill in the expense form; false if it isn't loaded (not signed in here, say)
+  function openCloudBill(gid, bid) {
+    const g = cloud.groups.get(gid), b = cloud.bills.get(gid) && cloud.bills.get(gid).get(bid);
+    if (!g || !b || b.deleted) return false;
+    const me = myMemberId(g);
+    const shares = b.shares || {};
+    const friends = Object.keys(shares).filter(id => id !== me);
+    if (b.paidBy !== me && !friends.includes(b.paidBy)) friends.push(b.paidBy);
+    const custom = { '': String(Number(shares[me]) || 0) };
+    friends.forEach(id => { custom[id] = String(Number(shares[id]) || 0); });
+    editingId = sharedEntryId(gid, bid);
+    split = { on: true, group: '', cloud: gid, cloudBill: bid, friends, paidBy: b.paidBy === me ? '' : b.paidBy, mode: b.mode || 'custom', custom };
+    document.getElementById('expenseForm').reset();
+    amountInput.value = b.total;
+    updateCalc();
+    const e = expenses.find(x => x.id === editingId);
+    const cat = e ? { category: e.category, subcategory: e.subcategory, detail: e.detail } : sharedCategory(b);
+    setEntryType('expense', cat.category, cat.subcategory || '', cat.detail || '');
+    document.getElementById('note').value = b.title || '';
+    document.getElementById('date').value = b.date;
+    document.getElementById('deleteBtn').style.display = '';
+    openModal('expenseModal');
+    return true;
+  }
+
+  // Save the expense form's split to its shared group; your share also goes straight into your expenses
+  function saveCloudBill(data, r) {
+    const g = cloud.groups.get(split.cloud);
+    if (!g || !cloud.user) return alert("Not connected to shared groups. Check you're online and signed in (Split tab).");
+    const me = myMemberId(g);
+    const { doc, collection, setDoc, updateDoc } = cloud.fb;
+    let detail = hasDetails(data.category) ? document.getElementById('detail').value : '';
+    if (detail === ADD_NEW) detail = '';
+    const mine = { category: data.category, subcategory: data.subcategory || '', detail };
+    const now = Date.now(), uid = cloud.user.uid;
+    const fields = {
+      title: data.note || data.subcategory || data.category, date: data.date, total: r.total,
+      paidBy: split.paidBy || me, shares: { [me]: r.mine, ...r.shares }, mode: split.mode,
+      updatedAt: now, updatedBy: uid,
+    };
+    let bid = split.cloudBill;
+    if (bid) {
+      cloudWrite(updateDoc(doc(cloud.db, 'groups', g.id, 'bills', bid), { ...fields, [`cats.${uid}`]: mine }));
+    } else {
+      const ref = doc(collection(cloud.db, 'groups', g.id, 'bills'));
+      bid = ref.id;
+      cloudWrite(setDoc(ref, { ...fields, category: data.category, subcategory: data.subcategory || '',
+        cats: { [uid]: mine }, createdAt: now, createdBy: uid, deleted: false }));
+    }
+    const id = sharedEntryId(g.id, bid);
+    const old = expenses.find(e => e.id === id);
+    // Saving an expense of your own into a shared group moves it there
+    expenses = expenses.filter(e => e.id !== id && e.id !== editingId);
+    if (r.mine > 0) {
+      expenses.push({ id, createdAt: old ? old.createdAt : now, type: 'expense', amount: r.mine, category: data.category,
+        subcategory: data.subcategory || '', ...(detail ? { detail } : {}), note: fields.title, date: data.date, shared: { g: g.id, b: bid } });
+    }
+    saveExpenses();
+    revealDate(data.date);
+    closeModal('expenseModal');
+    render();
+  }
+
+  function deleteCloudBill() {
+    if (!confirm('Delete this bill for everyone in the group?')) return;
+    const { doc, updateDoc } = cloud.fb;
+    cloudWrite(updateDoc(doc(cloud.db, 'groups', split.cloud, 'bills', split.cloudBill),
+      { deleted: true, updatedAt: Date.now(), updatedBy: cloud.user.uid }));
+    expenses = expenses.filter(e => e.id !== sharedEntryId(split.cloud, split.cloudBill));
+    saveExpenses();
+    closeModal('expenseModal');
+    render();
+  }
+
+  // ---- Shared payments (settle up) ----
+
+  function openCloudPayment(gid, memberId, pid) {
+    const g = cloud.groups.get(gid);
+    if (!g) return;
+    const t = cloudGroupState(g);
+    const p = pid && cloud.payments.get(gid) && cloud.payments.get(gid).get(pid);
+    const name = id => cloudMemberName(gid, id);
+    if (p && p.from !== t.me && p.to !== t.me) {
+      return alert(`${name(p.from)} paid ${name(p.to)} ${formatMoney(p.amount)} on ${fmtDate(p.date)}. Only they can change it.`);
+    }
+    const other = p ? (p.from === t.me ? p.to : p.from) : memberId;
+    const row = t.rows.find(r => r.id === other);
+    settleCloud = { gid, pid: p ? pid : null };
+    settleId = null;
+    upiPayeeName = null;
+    settleMode(true);
+    const ids = new Set(t.rows.map(r => r.id));
+    if (other) ids.add(other);
+    const sel = document.getElementById('settleMember');
+    sel.innerHTML = [...ids].map(id => `<option value="${escapeHtml(id)}">${escapeHtml(name(id))}</option>`).join('');
+    if (other) sel.value = other;
+    document.getElementById('settleTitle').textContent = p ? 'Edit payment' : `Settle up in ${g.name}`;
+    document.getElementById('settleAmount').value = p ? p.amount : row && !settled(row.bal) ? Math.abs(row.bal) : '';
+    document.getElementById('settleDate').value = p ? p.date : todayISO();
+    document.getElementById('settleNote').value = p ? p.note || '' : '';
+    document.getElementById('settleDeleteBtn').style.display = p ? '' : 'none';
+    setSettleDir(p ? (p.from === t.me ? 'out' : 'in') : row && row.bal < 0 ? 'out' : 'in');
+    openModal('settleModal');
+  }
+
+  function saveCloudPayment() {
+    const g = cloud.groups.get(settleCloud.gid);
+    const amount = evalAmount(document.getElementById('settleAmount').value);
+    const other = document.getElementById('settleMember').value;
+    const date = document.getElementById('settleDate').value;
+    if (!g || !(amount > 0) || !other || !date) return;
+    const me = myMemberId(g), uid = cloud.user.uid, now = Date.now();
+    const fields = { from: settleDir === 'in' ? other : me, to: settleDir === 'in' ? me : other, amount, date,
+      note: document.getElementById('settleNote').value.trim(), updatedAt: now, updatedBy: uid };
+    const { doc, collection, setDoc, updateDoc } = cloud.fb;
+    if (settleCloud.pid) cloudWrite(updateDoc(doc(cloud.db, 'groups', g.id, 'payments', settleCloud.pid), fields));
+    else cloudWrite(setDoc(doc(collection(cloud.db, 'groups', g.id, 'payments')), { ...fields, createdAt: now, createdBy: uid, deleted: false }));
+    closeModal('settleModal');
+    renderSplitTab();
+  }
+
+  function deleteCloudPayment() {
+    if (!settleCloud.pid || !confirm('Delete this payment for everyone in the group?')) return;
+    const { doc, updateDoc } = cloud.fb;
+    cloudWrite(updateDoc(doc(cloud.db, 'groups', settleCloud.gid, 'payments', settleCloud.pid),
+      { deleted: true, updatedAt: Date.now(), updatedBy: cloud.user.uid }));
+    closeModal('settleModal');
+    renderSplitTab();
+  }
+
+  // ---------- Simplify debts ----------
+  // Per group, like Splitwise: instead of everyone paying back whoever paid each bill, work out each
+  // person's net (what they're owed minus what they owe) and settle it in as few payments as possible.
+  // Totals never change; only who pays whom.
+
+  // nets: Map(person -> net, > 0 = gets money back). Biggest debtor pays biggest creditor, repeatedly.
+  function simplifyDebts(nets) {
+    const credit = [], debit = [];
+    nets.forEach((v, k) => {
+      v = round2(v);
+      if (v >= 0.01) credit.push({ k, v });
+      else if (v <= -0.01) debit.push({ k, v: -v });
+    });
+    const out = [];
+    while (credit.length && debit.length) {
+      credit.sort((a, b) => b.v - a.v);
+      debit.sort((a, b) => b.v - a.v);
+      const c = credit[0], d = debit[0], amount = round2(Math.min(c.v, d.v));
+      out.push({ from: d.k, to: c.k, amount });
+      c.v = round2(c.v - amount);
+      d.v = round2(d.v - amount);
+      if (c.v < 0.01) credit.shift();
+      if (d.v < 0.01) debit.shift();
+    }
+    return out;
+  }
+
+  // What `other` owes `me` under these payments (negative = you owe them)
+  function transferBalance(transfers, me, other) {
+    return round2(transfers.reduce((t, x) => t + (x.from === other && x.to === me ? x.amount : x.to === other && x.from === me ? -x.amount : 0), 0));
+  }
+
+  // A group on this device: everyone's net from its bills and its settle-ups. Keys: '' = you, else lowercase name.
+  function localGroupSimplified(g) {
+    const nets = new Map(), names = new Map([['', 'You']]);
+    const add = (name, v) => {
+      const key = name ? name.toLowerCase() : '';
+      if (name && !names.has(key)) names.set(key, canonFriend(name));
+      nets.set(key, (nets.get(key) || 0) + v);
+    };
+    expenses.forEach(e => {
+      if (!e.split || e.split.group !== g.id) return;
+      add(e.split.paidBy || '', e.split.total);
+      add('', -e.amount);
+      Object.entries(e.split.shares || {}).forEach(([name, v]) => add(name, -v));
+    });
+    settlements.forEach(x => {
+      if (x.group !== g.id) return;
+      // They paid you: they're owed that much more (owe less), you're owed less. And the other way round.
+      add(x.friend, x.dir === 'in' ? x.amount : -x.amount);
+      add('', x.dir === 'in' ? -x.amount : x.amount);
+    });
+    const transfers = simplifyDebts(nets).map(x => ({ ...x, fromName: names.get(x.from), toName: names.get(x.to) }));
+    return { transfers, balWith: name => transferBalance(transfers, '', name.toLowerCase()) };
+  }
+
+  let transferCtx = null; // { list, local | cloud, me } for the suggested payments on screen
+
+  function transfersHtml(list, ctx) {
+    transferCtx = { list, ...ctx };
+    const name = (key, given) => ctx.cloud ? cloudMemberName(ctx.cloud, key) : given;
+    return `
+      <div class="card">
+        <div class="card-head"><h2>💸 Suggested payments</h2><span class="simplify-tag">Simplified</span></div>
+        ${list.length ? list.map((x, i) => {
+          const from = name(x.from, x.fromName), to = name(x.to, x.toName);
+          const mine = ctx.cloud ? (x.from === ctx.me || x.to === ctx.me) : (x.from === '' || x.to === '');
+          return `
+          <div class="transfer-row" data-transfer="${i}">
+            <span class="who">${escapeHtml(from)} <span class="arrow">→</span> ${escapeHtml(to)}</span>
+            <span class="amt">${formatMoney(x.amount)}</span>
+            <span class="go">${mine ? 'Settle' : 'Record'}</span>
+          </div>`;
+        }).join('') + `<p class="hint">${list.length} payment${list.length === 1 ? '' : 's'} settle${list.length === 1 ? 's' : ''} the whole group. Tap one when it's been paid.</p>`
+          : '<p class="hint" style="margin-top:0">Everyone is settled up. 🎉</p>'}
+      </div>`;
+  }
+
+  // Tapped a suggested payment: your own opens Settle up ready to go; between two others, record it after a check
+  function recordTransfer(i) {
+    const ctx = transferCtx, x = ctx && ctx.list[i];
+    if (!x) return;
+    if (ctx.cloud) {
+      if (x.from === ctx.me || x.to === ctx.me) return openCloudPayment(ctx.cloud, x.from === ctx.me ? x.to : x.from);
+      const g = cloud.groups.get(ctx.cloud), name = id => cloudMemberName(ctx.cloud, id);
+      if (!g || !confirm(`Record that ${name(x.from)} paid ${name(x.to)} ${formatMoney(x.amount)}?`)) return;
+      const { doc, collection, setDoc } = cloud.fb;
+      const now = Date.now();
+      cloudWrite(setDoc(doc(collection(cloud.db, 'groups', g.id, 'payments')), { from: x.from, to: x.to, amount: x.amount,
+        date: todayISO(), note: '', createdAt: now, createdBy: cloud.user.uid, updatedAt: now, updatedBy: cloud.user.uid, deleted: false }));
+      return;
+    }
+    if (x.from === '' || x.to === '') return openSettle(x.from === '' ? x.toName : x.fromName, null, ctx.local);
+    if (!confirm(`Record that ${x.fromName} paid ${x.toName} ${formatMoney(x.amount)}?`)) return;
+    // This device only keeps what you and each friend owe each other, so a payment between two friends is
+    // kept as the payer settling with you and you settling with the receiver: their balances come out right
+    const note = `${x.fromName} paid ${x.toName} directly`, now = Date.now();
+    settlements.push(
+      { id: newId(), createdAt: now, friend: x.fromName, amount: x.amount, dir: 'in', date: todayISO(), note, group: ctx.local },
+      { id: newId(), createdAt: now + 1, friend: x.toName, amount: x.amount, dir: 'out', date: todayISO(), note, group: ctx.local });
+    saveSettlements();
+    render();
+  }
+
+  // ---------- Group spending report ----------
+  // How much each person in a group spent (their shares of its bills) and paid, as a donut plus a table.
+  // People keep their colour by a fixed order (you first, then by name), never by who spent most.
+
+  const REPORT_SLOTS = 8;   // beyond this, the rest fold into "Others"
+  let reportSel = null;     // person key highlighted in the report
+  let reportData = null;    // { people, total } as last drawn
+
+  // people: [{ key, name, spent, paid }] in colour order
+  function localGroupSpending(g) {
+    const byKey = new Map();
+    const get = name => {
+      const key = name ? name.toLowerCase() : '';
+      if (!byKey.has(key)) byKey.set(key, { key: key || 'you', name: name ? canonFriend(name) : 'You', spent: 0, paid: 0 });
+      return byKey.get(key);
+    };
+    get('');
+    g.members.forEach(get);
+    let total = 0, bills = 0;
+    expenses.forEach(e => {
+      if (!e.split || e.split.group !== g.id) return;
+      total += e.split.total;
+      bills++;
+      get('').spent += e.amount;
+      Object.entries(e.split.shares || {}).forEach(([name, v]) => { get(name).spent += v; });
+      get(e.split.paidBy || '').paid += e.split.total;
+    });
+    return reportPeople([...byKey.values()], total, bills);
+  }
+
+  function cloudGroupSpending(g) {
+    const me = myMemberId(g);
+    const byId = new Map();
+    const get = id => {
+      if (!byId.has(id)) byId.set(id, { key: id, name: cloudMemberName(g.id, id), spent: 0, paid: 0 });
+      return byId.get(id);
+    };
+    if (me) get(me);
+    activeMembers(g).forEach(get);
+    let total = 0, bills = 0;
+    (cloud.bills.get(g.id) || new Map()).forEach(b => {
+      if (b.deleted) return;
+      total += Number(b.total) || 0;
+      bills++;
+      Object.entries(b.shares || {}).forEach(([id, v]) => { if (g.members[id]) get(id).spent += Number(v) || 0; });
+      if (g.members[b.paidBy]) get(b.paidBy).paid += Number(b.total) || 0;
+    });
+    // Left the group and never part of a bill: not worth a row
+    const people = [...byId.values()].filter(p => p.spent || p.paid || !g.members[p.key].left);
+    return reportPeople(people.map(p => ({ ...p, you: p.key === me })), total, bills);
+  }
+
+  // You first, then by name; colours by that order; people past the last slot become "Others"
+  function reportPeople(people, total, bills) {
+    people.forEach(p => { p.spent = round2(p.spent); p.paid = round2(p.paid); });
+    people.sort((a, b) => (b.you || b.key === 'you') - (a.you || a.key === 'you') || a.name.localeCompare(b.name));
+    if (people.length > REPORT_SLOTS) {
+      const rest = people.splice(REPORT_SLOTS - 1);
+      people.push({ key: 'others', name: `Others (${rest.length})`, spent: round2(rest.reduce((t, p) => t + p.spent, 0)),
+        paid: round2(rest.reduce((t, p) => t + p.paid, 0)), others: true });
+    }
+    people.forEach((p, i) => { p.color = p.others ? 'var(--muted)' : `var(--p${i + 1})`; });
+    return { people, total: round2(total), bills };
+  }
+
+  function spendingReportHtml({ people, total, bills }) {
+    reportData = { people, total };
+    if (!bills) return `
+      <div class="card"><h2>📊 Spending report</h2>
+        <p class="hint" style="margin-top:0">Add a bill to see how much each person has spent.</p></div>`;
+    const TAU = Math.PI * 2;
+    let a = 0;
+    const slices = people.filter(p => p.spent > 0).map(p => {
+      const sweep = p.spent / total * TAU;
+      const d = arcPath(78, 118, a, a + Math.min(sweep, TAU - 0.0005));
+      a += sweep;
+      return `<path class="seg" data-report="${escapeHtml(p.key)}" d="${d}" style="fill:${p.color}"
+        tabindex="0" role="button" aria-label="${escapeHtml(`${p.name}: ${formatMoney(p.spent)}`)}"><title>${escapeHtml(`${p.name}: ${formatMoney(p.spent)}`)}</title></path>`;
+    }).join('');
+    const pct = v => (total ? (v / total * 100).toFixed(v / total < 0.1 && v ? 1 : 0) : 0) + '%';
+    return `
+      <div class="card" id="spendReport">
+        <h2>📊 Spending report</h2>
+        <div class="report-total">Total spent by the group<b>${formatMoney(total)}</b>across ${bills} bill${bills === 1 ? '' : 's'}</div>
+        <div class="chart-wrap report-chart">
+          <svg id="reportSvg" viewBox="0 0 ${CHART_SIZE} ${CHART_SIZE}" role="img" aria-label="Each person's share of the group's spending">${slices}</svg>
+          <div class="chart-center" id="reportCenter"></div>
+        </div>
+        <div class="report-head"><span class="nm">Person</span><span class="pc">Share</span><span class="am">Spent</span><span class="am">Paid</span></div>
+        ${people.map(p => `
+          <div class="report-row" data-report="${escapeHtml(p.key)}">
+            <span class="key" style="background:${p.color}"></span>
+            <span class="nm">${escapeHtml(p.name)}</span>
+            <span class="pc">${pct(p.spent)}</span>
+            <span class="am spent">${formatMoney(p.spent)}</span>
+            <span class="am paid">${formatMoney(p.paid)}</span>
+          </div>`).join('')}
+        <p class="hint"><b>Spent</b> is each person's share of the bills, what they actually used. <b>Paid</b> is what they paid upfront.
+          Tap a person to highlight them.</p>
+      </div>`;
+  }
+
+  // Highlight the chosen person and show them in the middle of the donut
+  function paintReportSelection() {
+    const svg = document.getElementById('reportSvg');
+    if (!svg || !reportData) return;
+    const p = reportData.people.find(x => x.key === reportSel);
+    if (!p) reportSel = null;
+    svg.classList.toggle('has-sel', !!p);
+    svg.querySelectorAll('.seg').forEach(s => s.classList.toggle('sel', s.dataset.report === reportSel));
+    document.querySelectorAll('#spendReport .report-row').forEach(r => r.classList.toggle('sel', r.dataset.report === reportSel));
+    const center = document.getElementById('reportCenter');
+    center.innerHTML = '<div class="value"></div><div class="label"></div><div class="pct"></div>';
+    const { total } = reportData;
+    center.children[0].textContent = formatMoney(p ? p.spent : total);
+    center.children[1].textContent = p ? p.name : 'Total spent';
+    center.children[2].textContent = p ? `${total ? (p.spent / total * 100).toFixed(0) : 0}% · paid ${formatMoney(p.paid)}` : 'tap a person';
+  }
+
+  // ---------- Paying with UPI ----------
+  // Settle up can hand over to GPay / PhonePe / any UPI app with the payee and amount filled in, using
+  // the standard upi://pay link. You confirm with your PIN there; nothing about the payment comes back here.
+  // UPI IDs: friends on this device are remembered here; in shared groups each person publishes their
+  // own (groups/{gid}/upi/{uid}), which only they can change.
+
+  const MY_UPI_KEY = 'moneyManager.myUpi';
+  const FRIEND_UPI_KEY = 'moneyManager.friendUpi.v1'; // { lowercase name: UPI ID }
+
+  function isUpiId(v) {
+    return /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/.test(v || '');
+  }
+
+  function friendUpis() {
+    try { return JSON.parse(localStorage.getItem(FRIEND_UPI_KEY)) || {}; } catch { return {}; }
+  }
+
+  function rememberUpi(name, vpa) {
+    const all = friendUpis();
+    if (all[name.toLowerCase()] === vpa) return;
+    all[name.toLowerCase()] = vpa;
+    localStorage.setItem(FRIEND_UPI_KEY, JSON.stringify(all));
+  }
+
+  // Who you'd be paying in the settle form: { name, vpa, fixed (published by them in a shared group) }
+  function settlePayee() {
+    if (settleCloud) {
+      const g = cloud.groups.get(settleCloud.gid);
+      const id = document.getElementById('settleMember').value;
+      const m = g && g.members[id];
+      if (!m) return null;
+      const published = m.uid && cloud.upis.get(g.id) && cloud.upis.get(g.id).get(m.uid);
+      return published ? { name: m.name, vpa: published, fixed: true } : { name: m.name || '', vpa: friendUpis()[(m.name || '').toLowerCase()] || '' };
+    }
+    const name = canonFriend(document.getElementById('settleFriend').value);
+    return name ? { name, vpa: friendUpis()[name.toLowerCase()] || '' } : null;
+  }
+
+  function upiLink(vpa, name, amount, note) {
+    const q = Object.entries({ pa: vpa, pn: name, am: amount.toFixed(2), cu: 'INR', tn: note.slice(0, 50) })
+      .map(([k, v]) => k + '=' + encodeURIComponent(v).replace(/%40/g, '@')).join('&'); // some UPI apps want a plain @
+    // iPhones don't open upi:// links; GPay's own link does the same there
+    return (/iPhone|iPad|iPod/.test(navigator.userAgent) ? 'gpay://upi/pay?' : 'upi://pay?') + q;
+  }
+
+  // Shown only when you're the one paying. refill = the form changed (person, direction): put in the
+  // person's saved UPI ID if it's someone else than before, keeping what you typed for the same person.
+  let upiPayeeName = null;
+  function updateUpiBox(refill) {
+    const box = document.getElementById('upiBox');
+    const payee = settleDir === 'out' && !settleId && !(settleCloud && settleCloud.pid) ? settlePayee() : null;
+    box.hidden = !payee;
+    if (!payee) return;
+    const input = document.getElementById('upiId');
+    if (payee.fixed || (refill && payee.name !== upiPayeeName)) input.value = payee.vpa;
+    upiPayeeName = payee.name;
+    input.readOnly = !!payee.fixed;
+    document.getElementById('upiLabel').textContent = `${payee.name}'s UPI ID`;
+    document.getElementById('upiNote').textContent = payee.fixed ? `Added by ${payee.name} in this group.`
+      : input.value && !isUpiId(input.value.trim()) ? 'That doesn’t look like a UPI ID (it should look like name@bank).'
+      : 'Remembered on this device for next time.';
+    const amount = evalAmount(document.getElementById('settleAmount').value);
+    const vpa = input.value.trim();
+    const pay = document.getElementById('upiPay');
+    const ready = isUpiId(vpa) && amount > 0;
+    const group = settleCloud && cloud.groups.get(settleCloud.gid);
+    pay.href = ready ? upiLink(vpa, payee.name, amount, `Money Manager${group ? ': ' + group.name : ''}`) : '#';
+    pay.setAttribute('aria-disabled', String(!ready));
+    pay.textContent = ready ? `Pay ${formatMoney(amount)} with UPI` : 'Pay with UPI';
+  }
+
+  function upiRowHtml() {
+    const mine = localStorage.getItem(MY_UPI_KEY);
+    return `<div class="upi-row"><span>💳 ${mine ? `Your UPI ID: <b>${escapeHtml(mine)}</b>` : 'Add your UPI ID so friends can pay you'}</span>
+      <button class="link-btn" data-action="my-upi">${mine ? 'Edit' : 'Add'}</button></div>`;
+  }
+
+  function editMyUpi() {
+    const now = localStorage.getItem(MY_UPI_KEY) || '';
+    const entered = prompt('Your UPI ID (e.g. name@okaxis). Friends in your shared groups will see it, and it’s added to summaries you share. Leave empty to remove.', now);
+    if (entered === null) return;
+    const vpa = entered.trim();
+    if (vpa && !isUpiId(vpa)) return alert('That doesn’t look like a UPI ID. It should look like name@bank.');
+    if (vpa) localStorage.setItem(MY_UPI_KEY, vpa);
+    else localStorage.removeItem(MY_UPI_KEY);
+    // Shared groups: publish the new one, or take it down
+    if (cloud.user) cloud.groups.forEach(g => {
+      if (vpa) publishMyUpi(g.id);
+      else if (cloud.upis.get(g.id) && cloud.upis.get(g.id).has(cloud.user.uid)) {
+        cloudWrite(cloud.fb.deleteDoc(cloud.fb.doc(cloud.db, 'groups', g.id, 'upi', cloud.user.uid)));
+      }
+    });
+    renderSplitTab();
+  }
+
+  // Put your UPI ID in a shared group if it isn't there (or is out of date)
+  function publishMyUpi(gid) {
+    const vpa = localStorage.getItem(MY_UPI_KEY);
+    const have = cloud.upis.get(gid);
+    if (!vpa || !cloud.user || !have || have.get(cloud.user.uid) === vpa) return;
+    const { doc, setDoc } = cloud.fb;
+    cloudWrite(setDoc(doc(cloud.db, 'groups', gid, 'upi', cloud.user.uid), { vpa, updatedAt: Date.now() }));
+  }
 
   // ---------- Category management ----------
 
@@ -3031,7 +5423,7 @@
   // ---------- Backup ----------
 
   function exportData() {
-    const blob = new Blob([JSON.stringify({ version: 2, expenses, categories }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 2, expenses, categories, settlements, groups }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'money-manager-backup-' + todayISO() + '.json';
@@ -3054,6 +5446,18 @@
           e.amount > 0 && e.date && e.category);
         expenses.push(...added);
         saveExpenses();
+        if (Array.isArray(parsed.settlements)) {
+          const have = new Set(settlements.map(x => x.id));
+          settlements.push(...parsed.settlements.filter(x => x && x.id && !have.has(x.id) && !deleted.settlements[x.id] &&
+            x.amount > 0 && x.friend && x.date));
+          saveSettlements();
+        }
+        if (Array.isArray(parsed.groups)) {
+          const have = new Set(groups.map(g => g.id));
+          groups.push(...parsed.groups.filter(g => g && g.id && !have.has(g.id) && !deleted.groups[g.id] &&
+            typeof g.name === 'string' && Array.isArray(g.members)));
+          saveGroups();
+        }
 
         if (Array.isArray(parsed.categories)) {
           parsed.categories.forEach(c => {
@@ -3122,12 +5526,20 @@
       deleted = {
         entries: mergeDeleted(deleted.entries, rd.entries),
         categories: mergeDeleted(deleted.categories, rd.categories),
+        settlements: mergeDeleted(deleted.settlements, rd.settlements),
+        groups: mergeDeleted(deleted.groups, rd.groups),
       };
       const remoteEntries = (Array.isArray(remote.expenses) ? remote.expenses : []).filter(e => e && e.id);
       const remoteCats = (Array.isArray(remote.categories) ? remote.categories : []).filter(c => c && typeof c.name === 'string');
       expenses = mergeLists(expenses, remoteEntries, entryKey, deleted.entries);
       categories = mergeLists(categories, remoteCats, categoryKey, deleted.categories);
+      const remoteSettlements = (Array.isArray(remote.settlements) ? remote.settlements : []).filter(x => x && x.id);
+      settlements = mergeLists(settlements, remoteSettlements, entryKey, deleted.settlements);
       savedEntries = snapshotMap(expenses, entryKey);
+      savedSettlements = snapshotMap(settlements, entryKey);
+      const remoteGroups = (Array.isArray(remote.groups) ? remote.groups : []).filter(g => g && g.id);
+      groups = mergeLists(groups, remoteGroups, entryKey, deleted.groups);
+      savedGroups = snapshotMap(groups, entryKey);
       savedCategories = snapshotMap(categories, categoryKey);
       // Two devices may have picked the same colour for different new categories
       if (normalizeCategoryColors()) savedCategories = trackChanges(categories, savedCategories, categoryKey, deleted.categories);
@@ -3135,7 +5547,7 @@
       render();
       if (document.getElementById('categoriesModal').classList.contains('open')) renderCategoryManager();
     }
-    return { version: 3, expenses, categories, deleted };
+    return { version: 3, expenses, categories, settlements, groups, deleted };
   }
 
   async function syncNow() {
@@ -3604,7 +6016,12 @@
   syncNow();
   if (syncConfig && syncConfig.provider === 'google') loadGoogle().catch(() => {}); // ready for a sign-in tap
   // Only for someone genuinely new: never seen the guide and nothing added yet
-  if (!localStorage.getItem(GUIDE_KEY) && !expenses.length && !categories.length) startGuide();
+  showSharedView();
+  // Signed in to shared groups here before: reconnect, so friends' new bills reach your expenses
+  if (localStorage.getItem(CLOUD_KEY)) loadCloud().catch(() => {});
+  const joining = checkJoinLink();
+  if (!localStorage.getItem(GUIDE_KEY) && !expenses.length && !categories.length &&
+    !location.hash.startsWith(SHARE_PREFIX) && !joining) startGuide();
 
   // Offline support + "install as app"; only works when served over http(s), e.g. GitHub Pages
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
