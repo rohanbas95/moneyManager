@@ -50,7 +50,7 @@
 
 <header>
   <h1>💰 Money Manager: Privacy Policy</h1>
-  <p>Last updated: 28 September 2026</p>
+  <p>Last updated: 15 October 2026</p>
 </header>
 
 <main>
@@ -59,9 +59,10 @@
   <section>
     <h2>In short</h2>
     <p>
-      Money Manager is a personal expense tracker that runs entirely in your browser. There is no
-      Money Manager server. Your income, expenses and categories are never sent to the developer,
-      and there are no ads, analytics or trackers.
+      Money Manager is a personal expense tracker that runs in your browser. Your income, expenses,
+      categories and bill photos are never sent to the developer, and there are no ads, analytics or
+      trackers. The only exception is the optional <b>shared groups</b> feature: bills you add to a
+      shared group are stored online (in Google Firebase) so the people in that group can see them.
     </p>
   </section>
 
@@ -71,12 +72,21 @@
       <li><b>On your device.</b> Everything you enter (amounts, dates, notes, categories) and your
         settings are saved in your browser's local storage on that device.</li>
       <li><b>In your own Google Drive (optional).</b> If you turn on Google Drive sync, a copy of your
-        data is saved as one file in a hidden app folder in <i>your</i> Google Drive, so your
-        devices can stay in step. Only this app can see that folder; it doesn't show in your Drive
+        data is saved in a hidden app folder in <i>your</i> Google Drive, so your devices can stay in
+        step: one file with your data, plus one file per bill photo you attach to an expense. Only this app can see that folder; it doesn't show in your Drive
         files, and the developer has no access to it.</li>
       <li><b>In your own GitHub repository (optional).</b> If you turn on GitHub sync instead, a copy
-        is saved as a file in the GitHub repository you choose, using an access token you create.
-        The token is saved only in your browser.</li>
+        is saved as a file in the GitHub repository you choose (with bill photos as separate files next
+        to it), using an access token you create. The token is saved only in your browser.</li>
+      <li><b>Bill photos.</b> A photo you attach to an expense is shrunk and kept on your device, and
+        copied to your Google Drive or GitHub if sync is on. Removing the photo or deleting the expense
+        deletes it there too.</li>
+      <li><b>Shared groups (optional).</b> If you sign in with Google to use shared groups, each group's
+        name, its members' names, email addresses and UPI IDs (if they add one), and the bills and
+        payments added to it are stored in a Google Firebase database run for this app, so everyone in
+        the group sees the same thing. Only signed-in members of a group can read or change it. Your own
+        share of a group bill is also added to your personal expenses on your device. Your personal
+        expenses, income and categories are never stored there.</li>
     </ul>
   </section>
 
@@ -85,8 +95,8 @@
     <p>When you sign in with Google, the app asks for two permissions:</p>
     <ul>
       <li><b>Its own app data in your Google Drive</b> (<code>drive.appdata</code>), to read and write
-        the one file that holds your Money Manager data. It cannot see or change any of your other
-        Drive files.</li>
+        the files that hold your Money Manager data and bill photos. It cannot see or change any of your
+        other Drive files.</li>
       <li><b>Your email address</b>, only to show which account you're signed in with on the Sync
         screen.</li>
     </ul>
@@ -106,8 +116,9 @@
     <h2>Other services</h2>
     <p>
       The app itself is hosted on GitHub Pages. When sync is on, your browser talks directly to Google
-      (sign-in and Drive) or GitHub; their own privacy policies apply to those services. The app
-      doesn't use cookies of its own.
+      (sign-in and Drive) or GitHub; with shared groups, it also talks to Google Firebase (sign-in and
+      the shared-group database). Their own privacy policies apply to those services. The app doesn't
+      use cookies of its own.
     </p>
   </section>
 
@@ -122,6 +133,9 @@
         <a href="https://myaccount.google.com/connections" target="_blank" rel="noopener">myaccount.google.com/connections</a>
         and remove Money Manager.</li>
       <li><b>From GitHub:</b> delete the file or repository you chose, and delete the access token.</li>
+      <li><b>From shared groups:</b> leave the group in the app (or, if you created it, delete it).
+        Your name and email, and the bills you were part of, stay visible to the other members, as they are
+        part of their records too.</li>
     </ul>
   </section>
 

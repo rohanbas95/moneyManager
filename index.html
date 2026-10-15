@@ -788,6 +788,20 @@
   .transfer-row .arrow { color: var(--muted); padding: 0 4px; }
   .transfer-row .amt { font-weight: 600; font-variant-numeric: tabular-nums; }
   .transfer-row .go { font-size: 12px; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .bill-field { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .bill-thumb { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; border: 1px solid var(--border); cursor: pointer; background: var(--bg); }
+  .bill-field .btn.small { padding: 9px 14px; }
+  .bill-status { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+  .bill-viewer { align-items: stretch; background: rgba(0,0,0,0.92); z-index: 40; }
+  .bill-viewer-inner { display: flex; flex-direction: column; width: 100%; max-width: 900px; margin: 0 auto; }
+  .bill-viewer-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; color: #fff; font-size: 14px; }
+  .bill-viewer-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
+  .bill-viewer-bar button { border: none; border-radius: 50%; width: 38px; height: 38px; background: rgba(255,255,255,0.16); color: #fff; font-size: 16px; cursor: pointer; }
+  .bill-viewer-body { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; -webkit-overflow-scrolling: touch; }
+  .bill-viewer-body img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; }
+  .bill-viewer-body.zoomed { align-items: flex-start; justify-content: flex-start; }
+  .bill-viewer-body.zoomed img { max-width: none; max-height: none; cursor: zoom-out; }
+  .bill-viewer-body .msg { color: #fff; text-align: center; padding: 24px; line-height: 1.6; opacity: 0.9; }
   .simplify-tag { font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 10px; padding: 2px 8px; }
 </style>
 </head>
@@ -924,6 +938,17 @@
       </div>
       <label for="note">Note (optional)</label>
       <input type="text" id="note" placeholder="e.g. Lunch with friends">
+      <div id="billField">
+        <label>Bill photo (optional)</label>
+        <input type="file" id="billInput" accept="image/*" hidden>
+        <div class="bill-field">
+          <img class="bill-thumb" id="billThumb" alt="Bill photo" hidden>
+          <button type="button" class="btn secondary small" id="billAdd">📷 Add bill photo</button>
+          <button type="button" class="btn secondary small" id="billShow" hidden>🧾 Show bill</button>
+          <button type="button" class="btn secondary small" id="billRemove" hidden>✕ Remove</button>
+          <div class="bill-status" id="billStatus" hidden></div>
+        </div>
+      </div>
       <label for="date">Date</label>
       <input type="date" id="date" required>
       <div class="btn-row">
@@ -992,6 +1017,14 @@
       <button type="button" class="btn secondary" id="shareCopy">📋 Copy</button>
       <button type="button" class="btn primary" id="shareSend">📤 Share</button>
     </div>
+  </div>
+</div>
+
+<!-- Full-screen bill photo -->
+<div class="modal-bg bill-viewer" id="billViewer">
+  <div class="bill-viewer-inner">
+    <div class="bill-viewer-bar"><span id="billViewerInfo"></span><button type="button" id="billViewerClose" aria-label="Close">✕</button></div>
+    <div class="bill-viewer-body" id="billViewerBody"></div>
   </div>
 </div>
 
@@ -2027,7 +2060,7 @@
             <div class="expense" style="${rowStyle(e.category, e.subcategory)}" onclick="openEdit('${e.id}')">
               <div class="icon">${escapeHtml(iconFor(e.category))}</div>
               <div class="info">
-                <div class="title">${mark(e.note || detailOf(e) || e.subcategory || e.category)}</div>
+                <div class="title">${mark(e.note || detailOf(e) || e.subcategory || e.category)}${e.bill ? ' <span title="Has a bill photo">🧾</span>' : ''}</div>
                 <div class="cat">${[e.category, e.subcategory, detailOf(e)].filter(Boolean).map(mark).join(' › ')}${e.split
                   ? ` · <span class="split-tag">👥 your share of ${formatMoney(e.split.total)}</span>` : ''}${e.shared
                   ? ` · <span class="split-tag">☁️ ${sharedEntryTag(e)}</span>` : ''}</div>
@@ -2711,6 +2744,7 @@
     document.getElementById('expenseForm').reset();
     document.getElementById('date').value = todayISO();
     split = newSplit();
+    resetBillForm(null);
     setEntryType('expense');
     updateCalc();
     document.getElementById('deleteBtn').style.display = 'none';
@@ -2729,6 +2763,7 @@
     if (e.shared && openCloudBill(e.shared.g, e.shared.b)) return;
     editingId = id;
     split = splitFromEntry(e);
+    resetBillForm(e);
     document.getElementById('amount').value = e.split ? e.split.total : e.amount;
     updateCalc();
     setEntryType(typeOf(e), e.category, e.subcategory || '', e.detail || '');
@@ -2811,9 +2846,12 @@
       : editing && editing.category === data.category ? editing.detail || '' : '';
     if (detail === ADD_NEW) detail = '';
     if (detail || (editing && editing.detail)) data.detail = detail;
+    const bill = commitBillForm(editing && editing.bill);
+    if (bill) data.bill = bill;
     if (editing) {
       Object.assign(editing, data);
       if (!data.split) delete editing.split;
+      if (!bill) delete editing.bill;
     } else if (editingId) {
       // Deleted on another device while this form was open: saving brings it back
       expenses.push({ id: editingId, createdAt: Date.now(), ...data });
@@ -2839,6 +2877,8 @@
   document.getElementById('deleteBtn').addEventListener('click', () => {
     if (split.cloudBill) return deleteCloudBill();
     if (!editingId || !confirm(`Delete this ${entryType}?`)) return;
+    const gone = expenses.find(x => x.id === editingId);
+    if (gone && gone.bill) forgetBill(gone.bill.id);
     expenses = expenses.filter(x => x.id !== editingId);
     saveExpenses();
     closeModal('expenseModal');
@@ -2949,6 +2989,8 @@
 
   // full = rebuild friends and inputs too; otherwise just the numbers (so typing in a share keeps focus)
   function renderSplit(full = true) {
+    // Bill photos are for your own expenses; a shared group's bill doesn't take one (yet)
+    document.getElementById('billField').hidden = !!(split.on && split.cloud);
     document.getElementById('splitOn').checked = split.on;
     document.getElementById('splitBox').hidden = !split.on;
     document.getElementById('amountLabel').textContent = split.on && entryType === 'expense' ? 'Total bill' : 'Amount';
@@ -4527,7 +4569,8 @@
     expenses = expenses.filter(e => e.id !== id && e.id !== editingId);
     if (r.mine > 0) {
       expenses.push({ id, createdAt: old ? old.createdAt : now, type: 'expense', amount: r.mine, category: data.category,
-        subcategory: data.subcategory || '', ...(detail ? { detail } : {}), note: fields.title, date: data.date, shared: { g: g.id, b: bid } });
+        subcategory: data.subcategory || '', ...(detail ? { detail } : {}), ...(old && old.bill ? { bill: old.bill } : {}),
+        note: fields.title, date: data.date, shared: { g: g.id, b: bid } });
     }
     saveExpenses();
     revealDate(data.date);
@@ -5420,6 +5463,305 @@
     }
   });
 
+  // ---------- Bill photos ----------
+  // An expense can carry a photo of its bill: entry.bill = { id, type, w, h, size } (synced with the data),
+  // the image itself kept on the device in IndexedDB and, with sync on, uploaded as its own file next to
+  // the data (Drive's hidden app folder as bill-<id>.jpg, or bills/<id>.jpg in the GitHub repo).
+  // "Show bill" uses the copy on the device, or fetches it from Drive/GitHub and keeps it.
+
+  const BILL_DB = 'moneyManager.bills';
+  const BILL_DELETES_KEY = 'moneyManager.billDeletes.v1'; // photos removed here, still to delete from Drive/GitHub
+  const BILL_MAX_SIDE = 1600;
+  let billDbOpen = null;
+
+  function billDb() {
+    return billDbOpen || (billDbOpen = new Promise((resolve, reject) => {
+      const req = indexedDB.open(BILL_DB, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('bills'); // id -> { blob, uploaded }
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => { billDbOpen = null; reject(req.error); };
+    }));
+  }
+
+  async function billStore(mode, fn) {
+    const db = await billDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('bills', mode);
+      const req = fn(tx.objectStore('bills'));
+      tx.oncomplete = () => resolve(req && req.result);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  const billGet = id => billStore('readonly', st => st.get(id));
+  const billPut = (id, rec) => billStore('readwrite', st => st.put(rec, id));
+  const billDelete = id => billStore('readwrite', st => st.delete(id));
+  const billKeys = () => billStore('readonly', st => st.getAllKeys());
+
+  // Photo from the camera/gallery -> JPEG no bigger than BILL_MAX_SIDE, upright, usually 150–300 KB
+  async function compressBill(file) {
+    let img;
+    try {
+      img = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch {
+      img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('unreadable'));
+        el.src = URL.createObjectURL(file);
+      });
+    }
+    const w0 = img.width || img.naturalWidth, h0 = img.height || img.naturalHeight;
+    const scale = Math.min(1, BILL_MAX_SIDE / Math.max(w0, h0));
+    const w = Math.round(w0 * scale), h = Math.round(h0 * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.72));
+    if (!blob) throw new Error('unreadable');
+    return { blob, w, h };
+  }
+
+  // The form's photo: keep = the entry's existing photo, or a new one picked (blob), or removed
+  let billForm = { keep: null, blob: null, w: 0, h: 0, url: '' };
+
+  function resetBillForm(e) {
+    if (billForm.url) URL.revokeObjectURL(billForm.url);
+    billForm = { keep: e && e.bill ? e.bill : null, blob: null, w: 0, h: 0, url: '' };
+    document.getElementById('billInput').value = '';
+    document.getElementById('billField').hidden = false;
+    renderBillForm();
+    // A thumbnail if the photo is already on this device (otherwise "Show bill" fetches it)
+    if (billForm.keep) {
+      const want = billForm.keep.id;
+      billGet(want).then(rec => {
+        if (!rec || !billForm.keep || billForm.keep.id !== want) return;
+        billForm.url = URL.createObjectURL(rec.blob);
+        renderBillForm();
+      }).catch(() => {});
+    }
+  }
+
+  function renderBillForm() {
+    const has = !!(billForm.blob || billForm.keep);
+    const thumb = document.getElementById('billThumb');
+    thumb.hidden = !billForm.url;
+    if (billForm.url) thumb.src = billForm.url;
+    document.getElementById('billAdd').textContent = has ? '📷 Replace' : '📷 Add bill photo';
+    document.getElementById('billShow').hidden = !has || !!billForm.url; // the thumbnail opens it too
+    document.getElementById('billRemove').hidden = !has;
+    const status = document.getElementById('billStatus');
+    status.hidden = !billForm.blob;
+    if (billForm.blob) status.textContent = `New photo (${Math.round(billForm.blob.size / 1024)} KB), saved with the expense.`;
+  }
+
+  document.getElementById('billAdd').addEventListener('click', () => document.getElementById('billInput').click());
+  document.getElementById('billInput').addEventListener('change', async ev => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const status = document.getElementById('billStatus');
+    status.hidden = false;
+    status.textContent = 'Preparing photo…';
+    try {
+      const { blob, w, h } = await compressBill(file);
+      if (billForm.url) URL.revokeObjectURL(billForm.url);
+      Object.assign(billForm, { blob, w, h, url: URL.createObjectURL(blob) });
+    } catch {
+      status.textContent = "Couldn't read that photo. Try another one, or take it again.";
+      return;
+    }
+    renderBillForm();
+  });
+  document.getElementById('billRemove').addEventListener('click', () => {
+    if (billForm.url) URL.revokeObjectURL(billForm.url);
+    billForm = { keep: null, blob: null, w: 0, h: 0, url: '' };
+    document.getElementById('billInput').value = '';
+    renderBillForm();
+  });
+  document.getElementById('billShow').addEventListener('click', () => {
+    if (billForm.blob) return showBillBlob(billForm.blob, 'New photo (not saved yet)');
+    if (billForm.keep) openBill(billForm.keep);
+  });
+  document.getElementById('billThumb').addEventListener('click', () => {
+    if (billForm.blob) showBillBlob(billForm.blob, 'New photo (not saved yet)');
+    else if (billForm.keep) openBill(billForm.keep);
+  });
+
+  // On Save: the photo the entry should now have (or null), storing a new one and letting go of a replaced one
+  function commitBillForm(before) {
+    if (billForm.blob) {
+      const bill = { id: 'b' + randomId(16), type: 'image/jpeg', w: billForm.w, h: billForm.h, size: billForm.blob.size };
+      billPut(bill.id, { blob: billForm.blob, uploaded: false })
+        .then(() => { if (syncConfig && navigator.onLine !== false) syncBills(); })
+        .catch(() => alert("Couldn't keep the photo on this device (storage full?)."));
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+      if (before) forgetBill(before.id);
+      return bill;
+    }
+    if (billForm.keep) return billForm.keep;
+    if (before) forgetBill(before.id);
+    return null;
+  }
+
+  // A photo no longer used: off this device now, and off Drive/GitHub at the next sync
+  function forgetBill(id) {
+    billDelete(id).catch(() => {});
+    if (!syncConfig) return;
+    const queue = JSON.parse(localStorage.getItem(BILL_DELETES_KEY) || '[]');
+    if (!queue.includes(id)) queue.push(id);
+    localStorage.setItem(BILL_DELETES_KEY, JSON.stringify(queue));
+  }
+
+  // ---- Viewer ----
+  let billViewerUrl = '';
+
+  function showBillBlob(blob, info) {
+    if (billViewerUrl) URL.revokeObjectURL(billViewerUrl);
+    billViewerUrl = URL.createObjectURL(blob);
+    const body = document.getElementById('billViewerBody');
+    body.classList.remove('zoomed');
+    body.innerHTML = '<img alt="Bill photo">';
+    body.firstChild.src = billViewerUrl;
+    document.getElementById('billViewerInfo').textContent = info || 'Tap the photo to zoom';
+    openModal('billViewer');
+  }
+
+  function showBillMessage(text) {
+    document.getElementById('billViewerBody').innerHTML = `<div class="msg">${text}</div>`;
+    document.getElementById('billViewerInfo').textContent = '';
+    openModal('billViewer');
+  }
+
+  // Show a saved expense's photo, fetching it from Drive/GitHub if this device doesn't have it
+  async function openBill(bill) {
+    try {
+      const rec = await billGet(bill.id);
+      if (rec) return showBillBlob(rec.blob);
+    } catch {}
+    if (!syncConfig) return showBillMessage('This photo was added on another device. Turn on sync (Google Drive or GitHub) to see it here.');
+    if (syncConfig.provider === 'google' && !googleTokenValid()) {
+      return showBillMessage('The photo is in your Google Drive. Sign in to Google (tap 🔑 at the top) to load it.');
+    }
+    showBillMessage('Loading the bill from ' + (syncConfig.provider === 'google' ? 'Google Drive' : 'GitHub') + '…');
+    try {
+      const blob = await remoteBillDownload(bill.id);
+      if (!blob) return showBillMessage("This photo hasn't been uploaded yet. Open the app on the device it was taken on, so it can sync.");
+      billPut(bill.id, { blob, uploaded: true }).catch(() => {});
+      if (document.getElementById('billViewer').classList.contains('open')) showBillBlob(blob);
+    } catch (err) {
+      showBillMessage(escapeHtml((err && err.message) || "Couldn't load the photo."));
+    }
+  }
+
+  document.getElementById('billViewerBody').addEventListener('click', ev => {
+    if (ev.target.tagName === 'IMG') ev.currentTarget.classList.toggle('zoomed');
+  });
+  document.getElementById('billViewerClose').addEventListener('click', () => closeModal('billViewer'));
+
+  // ---- Sync: upload new photos, delete removed ones, tidy this device ----
+  let billSyncing = false;
+
+  async function syncBills() {
+    if (!syncConfig || billSyncing) return;
+    billSyncing = true;
+    try {
+      const used = new Set(expenses.filter(e => e.bill).map(e => e.bill.id));
+      for (const id of await billKeys()) {
+        if (!used.has(id)) { await billDelete(id); continue; } // replaced or deleted (here or on another device)
+        const rec = await billGet(id);
+        if (rec && !rec.uploaded) {
+          await remoteBillUpload(id, rec.blob);
+          await billPut(id, { ...rec, uploaded: true });
+        }
+      }
+      let queue = JSON.parse(localStorage.getItem(BILL_DELETES_KEY) || '[]');
+      for (const id of queue) {
+        if (!used.has(id)) await remoteBillDelete(id);
+        queue = queue.filter(x => x !== id);
+        localStorage.setItem(BILL_DELETES_KEY, JSON.stringify(queue));
+      }
+    } catch (err) {
+      console.warn('Bill photos will sync later:', err); // offline / signed out: try again next sync
+    } finally {
+      billSyncing = false;
+    }
+  }
+
+  async function blobToBase64(blob) {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  const driveBillName = id => `bill-${id}.jpg`;
+
+  async function driveBillId(id) {
+    const q = encodeURIComponent(`name='${driveBillName(id)}' and trashed=false`);
+    const { files = [] } = await (await driveFetch(`${DRIVE_API}/files?spaces=appDataFolder&fields=files(id)&q=${q}`)).json();
+    return files.length ? files[0].id : null;
+  }
+
+  // GitHub: bills/<id>.jpg in the same folder as the data file
+  function githubBillPath(id) {
+    const dir = syncConfig.path.includes('/') ? syncConfig.path.slice(0, syncConfig.path.lastIndexOf('/') + 1) : '';
+    return (dir + 'bills/' + id + '.jpg').split('/').map(encodeURIComponent).join('/');
+  }
+
+  async function remoteBillUpload(id, blob) {
+    if (syncConfig.provider === 'google') {
+      if (await driveBillId(id)) return; // already there (another try got it up)
+      const boundary = 'mmbill' + Date.now();
+      const body = new Blob([
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+          JSON.stringify({ name: driveBillName(id), parents: ['appDataFolder'], mimeType: 'image/jpeg' }) +
+          `\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`,
+        blob, `\r\n--${boundary}--`]);
+      await driveFetch(`${DRIVE_UPLOAD}/files?uploadType=multipart`, {
+        method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body,
+      });
+      return;
+    }
+    const path = githubBillPath(id);
+    const existing = await githubFetch(`/contents/${path}`);
+    if (existing.ok) return;
+    const res = await githubFetch(`/contents/${path}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Money Manager: bill photo', content: await blobToBase64(blob) }),
+    });
+    if (!res.ok) throw githubError(res);
+  }
+
+  // The photo, or null if it isn't there (not uploaded yet)
+  async function remoteBillDownload(id) {
+    if (syncConfig.provider === 'google') {
+      const fileId = await driveBillId(id);
+      return fileId ? await (await driveFetch(`${DRIVE_API}/files/${fileId}?alt=media`)).blob() : null;
+    }
+    const res = await githubFetch(`/contents/${githubBillPath(id)}`, { headers: { Accept: 'application/vnd.github.raw' } });
+    if (res.status === 404) return null;
+    if (!res.ok) throw githubError(res);
+    return new Blob([await res.arrayBuffer()], { type: 'image/jpeg' });
+  }
+
+  async function remoteBillDelete(id) {
+    if (syncConfig.provider === 'google') {
+      const fileId = await driveBillId(id);
+      if (fileId) await driveFetch(`${DRIVE_API}/files/${fileId}`, { method: 'DELETE' });
+      return;
+    }
+    const path = githubBillPath(id);
+    const res = await githubFetch(`/contents/${path}`);
+    if (res.status === 404) return;
+    if (!res.ok) throw githubError(res);
+    const { sha } = await res.json();
+    const del = await githubFetch(`/contents/${path}`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Money Manager: remove bill photo', sha }),
+    });
+    if (!del.ok && del.status !== 404) throw githubError(del);
+  }
+
   // ---------- Backup ----------
 
   function exportData() {
@@ -5577,6 +5919,7 @@
       syncConfig.lastSync = Date.now();
       localStorage.setItem(SYNC_KEY, JSON.stringify(syncConfig));
       setSyncStatus('ok');
+      syncBills(); // photos go up (and old ones come down) on their own, after the data
     } catch (err) {
       setSyncStatus(err.offline ? 'offline' : err.signIn ? 'signin' : 'error', err.message);
     } finally {
