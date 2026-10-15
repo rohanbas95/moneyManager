@@ -5502,8 +5502,10 @@
   // and charges; you say who had what; each person pays for their items, items nobody is picked for are
   // shared by everyone, and taxes / service charge are spread in proportion to what each person had.
 
-  const SCAN_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite']; // second is used if the first isn't available
-  const SCAN_TIMEOUT = 60000; // a bill normally reads in a few seconds; past this something is blocked
+  // Flash-Lite reads a bill in ~5 s on the free tier; 3.8 Flash there accepts the request but may never answer,
+  // so it's only the backup. The next model is tried if one is unavailable or doesn't answer in time.
+  const SCAN_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+  const SCAN_TIMEOUT = 45000;
   const SCAN_PROMPT = `You are reading a photo of a restaurant or shop bill (often from India, amounts in rupees).
 Extract every purchased line item: its name as printed (tidy capitalisation), the quantity, and the line amount
 (what that line costs in total, after quantity). Put taxes (CGST, SGST, VAT…), service charge, packing or delivery
@@ -5551,7 +5553,7 @@ If the photo is not a bill or receipt, set "readable" to false.`;
         return JSON.parse(res.response.text());
       } catch (err) {
         lastErr = err;
-        if (!/404|not found|not supported|permission|quota|429|unavailable/i.test(String(err && err.message))) break;
+        if (!/404|not found|not supported|permission|quota|429|unavailable|timeout|aborted/i.test(String(err && err.message))) break;
       }
     }
     throw lastErr;
@@ -5560,7 +5562,7 @@ If the photo is not a bill or receipt, set "readable" to false.`;
   function scanError(err) {
     const msg = String((err && err.message) || err);
     if (/api-not-enabled|not been used|disabled|AI Logic/i.test(msg)) return 'Bill scanning isn\'t switched on for this app yet (Firebase console → AI Logic → Get started).';
-    if (/timeout|timed out|aborted/i.test(msg)) return 'Gemini didn\'t answer within a minute. If you recently changed API key restrictions in Google Cloud, check the "Gemini Developer API key" has no website restriction and the browser key allows "Firebase AI Logic API". Otherwise try again.';
+    if (/timeout|timed out|aborted/i.test(msg)) return 'Gemini didn\'t answer in time. If you recently changed API key restrictions in Google Cloud, check the "Gemini Developer API key" has no website restriction and the browser key allows "Firebase AI Logic API". Otherwise try again.';
     if (/blocked|referer|referrer|API_KEY|403/i.test(msg)) return 'Google blocked the request with this app\'s API key: ' + escapeHtml(msg.slice(0, 200)) + '<br>Check the key\'s website and API restrictions in Google Cloud.';
     if (/quota|429|exhausted/i.test(msg)) return 'Bill scanning has hit its free daily limit. Try again later, or enter the amounts yourself.';
     if (/failed to fetch|network|offline/i.test(msg) || navigator.onLine === false) return 'No internet connection. Scanning needs to be online.';
