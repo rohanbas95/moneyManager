@@ -5503,6 +5503,7 @@
   // shared by everyone, and taxes / service charge are spread in proportion to what each person had.
 
   const SCAN_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite']; // second is used if the first isn't available
+  const SCAN_TIMEOUT = 60000; // a bill normally reads in a few seconds; past this something is blocked
   const SCAN_PROMPT = `You are reading a photo of a restaurant or shop bill (often from India, amounts in rupees).
 Extract every purchased line item: its name as printed (tidy capitalisation), the quantity, and the line amount
 (what that line costs in total, after quantity). Put taxes (CGST, SGST, VAT…), service charge, packing or delivery
@@ -5545,7 +5546,7 @@ If the photo is not a bill or receipt, set "readable" to false.`;
     let lastErr;
     for (const name of scanModel ? [scanModel] : SCAN_MODELS) {
       try {
-        const res = await (await scanModelFor(name)).generateContent([SCAN_PROMPT, image]);
+        const res = await (await scanModelFor(name)).generateContent([SCAN_PROMPT, image], { timeout: SCAN_TIMEOUT });
         scanModel = name;
         return JSON.parse(res.response.text());
       } catch (err) {
@@ -5559,6 +5560,8 @@ If the photo is not a bill or receipt, set "readable" to false.`;
   function scanError(err) {
     const msg = String((err && err.message) || err);
     if (/api-not-enabled|not been used|disabled|AI Logic/i.test(msg)) return 'Bill scanning isn\'t switched on for this app yet (Firebase console → AI Logic → Get started).';
+    if (/timeout|timed out|aborted/i.test(msg)) return 'Gemini didn\'t answer within a minute. If you recently changed API key restrictions in Google Cloud, check the "Gemini Developer API key" has no website restriction and the browser key allows "Firebase AI Logic API". Otherwise try again.';
+    if (/blocked|referer|referrer|API_KEY|403/i.test(msg)) return 'Google blocked the request with this app\'s API key: ' + escapeHtml(msg.slice(0, 200)) + '<br>Check the key\'s website and API restrictions in Google Cloud.';
     if (/quota|429|exhausted/i.test(msg)) return 'Bill scanning has hit its free daily limit. Try again later, or enter the amounts yourself.';
     if (/failed to fetch|network|offline/i.test(msg) || navigator.onLine === false) return 'No internet connection. Scanning needs to be online.';
     return "Couldn't read the bill: " + escapeHtml(msg.slice(0, 160));
