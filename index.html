@@ -29,6 +29,9 @@
     --danger: #dc2626;
     --border: #e5e7eb;
     --income: #15803d;
+    /* People in a split group's spending report, in fixed order (checked for colour-blind separation) */
+    --p1: #2a78d6; --p2: #eb6834; --p3: #1baf7a; --p4: #eda100;
+    --p5: #e87ba4; --p6: #008300; --p7: #4a3aa7; --p8: #e34948;
   }
   /* Theme: follows the phone's setting unless Light or Dark is picked in the menu (html[data-theme]).
      The two dark blocks must stay identical. */
@@ -42,6 +45,8 @@
       --muted: #9ca3af;
       --border: #374151;
       --income: #4ade80;
+      --p1: #3987e5; --p2: #d95926; --p3: #199e70; --p4: #c98500;
+      --p5: #d55181; --p6: #008300; --p7: #9085e9; --p8: #e66767;
     }
   }
   :root[data-theme="dark"] {
@@ -52,6 +57,8 @@
     --muted: #9ca3af;
     --border: #374151;
     --income: #4ade80;
+    --p1: #3987e5; --p2: #d95926; --p3: #199e70; --p4: #c98500;
+    --p5: #d55181; --p6: #008300; --p7: #9085e9; --p8: #e66767;
   }
   .setting-label { margin: 20px 0 6px; font-size: 13px; color: var(--muted); }
   .setting-label + .segmented { margin-bottom: 0; }
@@ -760,6 +767,21 @@
   .upi-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
   .upi-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
   .upi-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .report-total { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .report-total b { display: block; font-size: 24px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .report-chart { max-width: 240px; margin: 4px auto 8px; }
+  .report-chart .chart-center { left: 25%; width: 50%; top: 0; height: 100%; }
+  .report-head, .report-row { display: flex; align-items: center; gap: 10px; padding: 8px; font-size: 14px; }
+  .report-head { padding-top: 0; padding-bottom: 4px; font-size: 12px; color: var(--muted); }
+  .report-row { border-radius: 8px; cursor: pointer; }
+  .report-row.sel { background: var(--bg); }
+  .report-row .key { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .report-head .nm, .report-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .report-head .pc, .report-row .pc { width: 40px; text-align: right; font-size: 12px; color: var(--muted); }
+  .report-head .am, .report-row .am { width: 78px; text-align: right; font-variant-numeric: tabular-nums; }
+  .report-row .am.spent { font-weight: 600; }
+  .report-row .am.paid { color: var(--muted); }
+  .report-head .nm { padding-left: 22px; }
 </style>
 </head>
 <body>
@@ -3189,7 +3211,7 @@
     const el = document.getElementById('splitContent');
     if (splitNav.cloud) {
       const cg = cloud.groups.get(splitNav.cloud);
-      if (cg) return renderCloudGroupView(el, cg);
+      if (cg) { renderCloudGroupView(el, cg); return paintReportSelection(); }
       if (cloud.user) {
         el.innerHTML = `<div class="card"><div class="friend-head"><button class="back-btn" data-action="split-back">‹ Split</button>
           <h2>☁️ Loading…</h2></div><p class="hint">Waiting for the shared group. If it doesn't appear, you may no longer be in it.</p>
@@ -3203,7 +3225,7 @@
     const friends = friendBalances();
     const g = findGroup(splitNav.group);
     const f = !g && splitNav.friend && friends.find(x => x.name.toLowerCase() === splitNav.friend.toLowerCase());
-    if (g) return renderGroupView(el, g);
+    if (g) { renderGroupView(el, g); return paintReportSelection(); }
     if (f) return renderFriendView(el, f);
     splitNav = { group: null, friend: null, cloud: null };
 
@@ -3283,6 +3305,7 @@
         ${members.length ? sortByBalance(members).map(x => friendRowHtml(x, 'Tap to settle up in this group')).join('')
           : '<p class="hint" style="margin-top:0">No members yet. Tap Edit to add some.</p>'}
       </div>
+      ${spendingReportHtml(localGroupSpending(g))}
       <div class="card">
         <h2>Activity</h2>
         ${items.length ? `<div class="items">${items.map(it => activityRowHtml(it)).join('')}</div>
@@ -3322,9 +3345,14 @@
 
   document.getElementById('splitContent').addEventListener('click', ev => {
     if (ev.target.closest('[data-action="my-upi"]')) return editMyUpi();
+    const rep = ev.target.closest('[data-report]');
+    if (rep) {
+      reportSel = reportSel === rep.dataset.report ? null : rep.dataset.report;
+      return paintReportSelection();
+    }
     if (handleCloudClick(ev)) return;
     const groupRow = ev.target.closest('[data-group]');
-    if (groupRow) { splitNav = { group: groupRow.dataset.group, friend: null }; window.scrollTo(0, 0); return renderSplitTab(); }
+    if (groupRow) { splitNav = { group: groupRow.dataset.group, friend: null }; reportSel = null; window.scrollTo(0, 0); return renderSplitTab(); }
     const row = ev.target.closest('[data-friend]');
     if (row) {
       // Inside a group, tapping a member settles up within the group
@@ -4213,6 +4241,7 @@
           </div>`;
         }).join('') : '<p class="hint" style="margin-top:0">Just you so far. Tap Invite to bring friends in, or Edit to add them by name.</p>'}
       </div>
+      ${spendingReportHtml(cloudGroupSpending(g))}
       <div class="card">
         <h2>Activity</h2>
         ${activity ? `<div class="items">${activity}</div>
@@ -4224,7 +4253,7 @@
   function handleCloudClick(ev) {
     const gid = splitNav.cloud;
     const row = ev.target.closest('[data-cloud-group]');
-    if (row) { splitNav = { group: null, friend: null, cloud: row.dataset.cloudGroup }; window.scrollTo(0, 0); renderSplitTab(); return true; }
+    if (row) { splitNav = { group: null, friend: null, cloud: row.dataset.cloudGroup }; reportSel = null; window.scrollTo(0, 0); renderSplitTab(); return true; }
     const claim = ev.target.closest('[data-claim]');
     if (claim) { claimCloudMember(gid, claim.dataset.claim); return true; }
     const member = ev.target.closest('[data-member]');
@@ -4538,6 +4567,125 @@
       { deleted: true, updatedAt: Date.now(), updatedBy: cloud.user.uid }));
     closeModal('settleModal');
     renderSplitTab();
+  }
+
+  // ---------- Group spending report ----------
+  // How much each person in a group spent (their shares of its bills) and paid, as a donut plus a table.
+  // People keep their colour by a fixed order (you first, then by name), never by who spent most.
+
+  const REPORT_SLOTS = 8;   // beyond this, the rest fold into "Others"
+  let reportSel = null;     // person key highlighted in the report
+  let reportData = null;    // { people, total } as last drawn
+
+  // people: [{ key, name, spent, paid }] in colour order
+  function localGroupSpending(g) {
+    const byKey = new Map();
+    const get = name => {
+      const key = name ? name.toLowerCase() : '';
+      if (!byKey.has(key)) byKey.set(key, { key: key || 'you', name: name ? canonFriend(name) : 'You', spent: 0, paid: 0 });
+      return byKey.get(key);
+    };
+    get('');
+    g.members.forEach(get);
+    let total = 0, bills = 0;
+    expenses.forEach(e => {
+      if (!e.split || e.split.group !== g.id) return;
+      total += e.split.total;
+      bills++;
+      get('').spent += e.amount;
+      Object.entries(e.split.shares || {}).forEach(([name, v]) => { get(name).spent += v; });
+      get(e.split.paidBy || '').paid += e.split.total;
+    });
+    return reportPeople([...byKey.values()], total, bills);
+  }
+
+  function cloudGroupSpending(g) {
+    const me = myMemberId(g);
+    const byId = new Map();
+    const get = id => {
+      if (!byId.has(id)) byId.set(id, { key: id, name: cloudMemberName(g.id, id), spent: 0, paid: 0 });
+      return byId.get(id);
+    };
+    if (me) get(me);
+    activeMembers(g).forEach(get);
+    let total = 0, bills = 0;
+    (cloud.bills.get(g.id) || new Map()).forEach(b => {
+      if (b.deleted) return;
+      total += Number(b.total) || 0;
+      bills++;
+      Object.entries(b.shares || {}).forEach(([id, v]) => { if (g.members[id]) get(id).spent += Number(v) || 0; });
+      if (g.members[b.paidBy]) get(b.paidBy).paid += Number(b.total) || 0;
+    });
+    // Left the group and never part of a bill: not worth a row
+    const people = [...byId.values()].filter(p => p.spent || p.paid || !g.members[p.key].left);
+    return reportPeople(people.map(p => ({ ...p, you: p.key === me })), total, bills);
+  }
+
+  // You first, then by name; colours by that order; people past the last slot become "Others"
+  function reportPeople(people, total, bills) {
+    people.forEach(p => { p.spent = round2(p.spent); p.paid = round2(p.paid); });
+    people.sort((a, b) => (b.you || b.key === 'you') - (a.you || a.key === 'you') || a.name.localeCompare(b.name));
+    if (people.length > REPORT_SLOTS) {
+      const rest = people.splice(REPORT_SLOTS - 1);
+      people.push({ key: 'others', name: `Others (${rest.length})`, spent: round2(rest.reduce((t, p) => t + p.spent, 0)),
+        paid: round2(rest.reduce((t, p) => t + p.paid, 0)), others: true });
+    }
+    people.forEach((p, i) => { p.color = p.others ? 'var(--muted)' : `var(--p${i + 1})`; });
+    return { people, total: round2(total), bills };
+  }
+
+  function spendingReportHtml({ people, total, bills }) {
+    reportData = { people, total };
+    if (!bills) return `
+      <div class="card"><h2>📊 Spending report</h2>
+        <p class="hint" style="margin-top:0">Add a bill to see how much each person has spent.</p></div>`;
+    const TAU = Math.PI * 2;
+    let a = 0;
+    const slices = people.filter(p => p.spent > 0).map(p => {
+      const sweep = p.spent / total * TAU;
+      const d = arcPath(78, 118, a, a + Math.min(sweep, TAU - 0.0005));
+      a += sweep;
+      return `<path class="seg" data-report="${escapeHtml(p.key)}" d="${d}" style="fill:${p.color}"
+        tabindex="0" role="button" aria-label="${escapeHtml(`${p.name}: ${formatMoney(p.spent)}`)}"><title>${escapeHtml(`${p.name}: ${formatMoney(p.spent)}`)}</title></path>`;
+    }).join('');
+    const pct = v => (total ? (v / total * 100).toFixed(v / total < 0.1 && v ? 1 : 0) : 0) + '%';
+    return `
+      <div class="card" id="spendReport">
+        <h2>📊 Spending report</h2>
+        <div class="report-total">Total spent by the group<b>${formatMoney(total)}</b>across ${bills} bill${bills === 1 ? '' : 's'}</div>
+        <div class="chart-wrap report-chart">
+          <svg id="reportSvg" viewBox="0 0 ${CHART_SIZE} ${CHART_SIZE}" role="img" aria-label="Each person's share of the group's spending">${slices}</svg>
+          <div class="chart-center" id="reportCenter"></div>
+        </div>
+        <div class="report-head"><span class="nm">Person</span><span class="pc">Share</span><span class="am">Spent</span><span class="am">Paid</span></div>
+        ${people.map(p => `
+          <div class="report-row" data-report="${escapeHtml(p.key)}">
+            <span class="key" style="background:${p.color}"></span>
+            <span class="nm">${escapeHtml(p.name)}</span>
+            <span class="pc">${pct(p.spent)}</span>
+            <span class="am spent">${formatMoney(p.spent)}</span>
+            <span class="am paid">${formatMoney(p.paid)}</span>
+          </div>`).join('')}
+        <p class="hint"><b>Spent</b> is each person's share of the bills, what they actually used. <b>Paid</b> is what they paid upfront.
+          Tap a person to highlight them.</p>
+      </div>`;
+  }
+
+  // Highlight the chosen person and show them in the middle of the donut
+  function paintReportSelection() {
+    const svg = document.getElementById('reportSvg');
+    if (!svg || !reportData) return;
+    const p = reportData.people.find(x => x.key === reportSel);
+    if (!p) reportSel = null;
+    svg.classList.toggle('has-sel', !!p);
+    svg.querySelectorAll('.seg').forEach(s => s.classList.toggle('sel', s.dataset.report === reportSel));
+    document.querySelectorAll('#spendReport .report-row').forEach(r => r.classList.toggle('sel', r.dataset.report === reportSel));
+    const center = document.getElementById('reportCenter');
+    center.innerHTML = '<div class="value"></div><div class="label"></div><div class="pct"></div>';
+    const { total } = reportData;
+    center.children[0].textContent = formatMoney(p ? p.spent : total);
+    center.children[1].textContent = p ? p.name : 'Total spent';
+    center.children[2].textContent = p ? `${total ? (p.spent / total * 100).toFixed(0) : 0}% · paid ${formatMoney(p.paid)}` : 'tap a person';
   }
 
   // ---------- Paying with UPI ----------
