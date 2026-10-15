@@ -81,6 +81,10 @@
       <li><b>Bill photos.</b> A photo you attach to an expense is shrunk and kept on your device, and
         copied to your Google Drive or GitHub if sync is on. Removing the photo or deleting the expense
         deletes it there too.</li>
+      <li><b>Scanning a bill (optional).</b> When you tap "Scan bill", that photo is sent to Google's
+        Gemini AI (through Google Firebase) to read the items and prices, and the result comes back to the
+        app. The photo isn't stored by the app anywhere else. This uses Gemini's free tier, under whose terms
+        Google may use what's sent to improve its services, so don't scan anything you'd consider sensitive.</li>
       <li><b>Shared groups (optional).</b> If you sign in with Google to use shared groups, each group's
         name, its members' names, email addresses and UPI IDs (if they add one), and the bills and
         payments added to it are stored in a Google Firebase database run for this app, so everyone in

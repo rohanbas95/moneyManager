@@ -802,6 +802,26 @@
   .bill-viewer-body.zoomed { align-items: flex-start; justify-content: flex-start; }
   .bill-viewer-body.zoomed img { max-width: none; max-height: none; cursor: zoom-out; }
   .bill-viewer-body .msg { color: #fff; text-align: center; padding: 24px; line-height: 1.6; opacity: 0.9; }
+  .scan-btn { width: 100%; margin-bottom: 12px; }
+  .scan-head { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+  .scan-head b { color: var(--text); }
+  .scan-warn { margin: 8px 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--text); }
+  .scan-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .scan-item-top { display: flex; gap: 8px; align-items: center; }
+  .scan-item-top input { padding: 8px 10px; font-size: 14px; }
+  .scan-item-top .scan-name { flex: 1; min-width: 0; }
+  .scan-item-top .scan-amt { width: 92px; text-align: right; font-variant-numeric: tabular-nums; }
+  .scan-item-top button { flex: none; border: none; background: none; color: var(--muted); font-size: 15px; padding: 6px; cursor: pointer; }
+  .scan-item .chips { margin: 8px 0 0; }
+  .scan-who { cursor: pointer; padding: 5px 12px; background: var(--card); }
+  .scan-who.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .scan-shared { font-size: 12px; color: var(--muted); align-self: center; }
+  .scan-totals { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--bg); }
+  .scan-totals .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .scan-totals .row.sum { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 8px; font-weight: 700; }
+  .scan-loading { text-align: center; padding: 30px 10px; color: var(--muted); line-height: 1.6; }
+  .scan-loading .spin { display: inline-block; font-size: 28px; animation: scanspin 1.2s linear infinite; }
+  @keyframes scanspin { to { transform: rotate(360deg); } }
   .simplify-tag { font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 10px; padding: 2px 8px; }
 </style>
 </head>
@@ -909,6 +929,8 @@
       <div id="splitField">
         <label class="split-toggle"><input type="checkbox" id="splitOn"> 👥 Split with friends</label>
         <div class="split-box" id="splitBox" hidden>
+          <button type="button" class="btn secondary scan-btn" id="scanBtn">📷 Scan bill &amp; split by items</button>
+          <input type="file" id="scanInput" accept="image/*" hidden>
           <label for="splitGroup" style="margin-top:0">Group (optional)</label>
           <select id="splitGroup"></select>
           <label>With</label>
@@ -1016,6 +1038,18 @@
       <button type="button" class="btn secondary" onclick="closeModal('shareModal')">Close</button>
       <button type="button" class="btn secondary" id="shareCopy">📋 Copy</button>
       <button type="button" class="btn primary" id="shareSend">📤 Share</button>
+    </div>
+  </div>
+</div>
+
+<!-- Split a scanned bill item by item -->
+<div class="modal-bg" id="scanModal">
+  <div class="modal">
+    <h3>Split by items</h3>
+    <div id="scanBody"></div>
+    <div class="btn-row">
+      <button type="button" class="btn secondary" id="scanCancel">Cancel</button>
+      <button type="button" class="btn primary" id="scanUse" disabled>Use this split</button>
     </div>
   </div>
 </div>
@@ -3925,7 +3959,7 @@
         const [app, auth, fs] = await Promise.all(['firebase-app', 'firebase-auth', 'firebase-firestore']
           .map(m => import(FIREBASE_SDK + m + '.js')));
         cloud.fb = { ...app, ...auth, ...fs };
-        const fbApp = app.initializeApp(FIREBASE_CONFIG);
+        const fbApp = cloud.app = app.initializeApp(FIREBASE_CONFIG);
         cloud.auth = auth.getAuth(fbApp);
         // Kept on the device too, so shared groups open (and take new bills) offline
         cloud.db = fs.initializeFirestore(fbApp, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) });
@@ -5461,6 +5495,246 @@
       const again = document.querySelector(`#categoryManager .add-sub[data-i="${form.dataset.i}"] input`);
       if (again) again.focus();
     }
+  });
+
+  // ---------- Scan a bill and split it by items ----------
+  // Gemini (through Firebase AI Logic, so no API key lives in the app) reads the bill photo into items
+  // and charges; you say who had what; each person pays for their items, items nobody is picked for are
+  // shared by everyone, and taxes / service charge are spread in proportion to what each person had.
+
+  const SCAN_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite']; // second is used if the first isn't available
+  const SCAN_PROMPT = `You are reading a photo of a restaurant or shop bill (often from India, amounts in rupees).
+Extract every purchased line item: its name as printed (tidy capitalisation), the quantity, and the line amount
+(what that line costs in total, after quantity). Put taxes (CGST, SGST, VAT…), service charge, packing or delivery
+fees, tips and round-off in "charges"; discounts go in "charges" as negative amounts. "total" is the final amount payable.
+Numbers only, no currency symbols. Never invent items. If something is hard to read, give your best guess and say so in "note".
+If the photo is not a bill or receipt, set "readable" to false.`;
+
+  let scan = null; // { merchant, total, items: [{ name, amount, who: [keys] }], charges: [{ name, amount }], people: [{ key, name }] }
+  let scanModel = null;
+
+  async function scanModelFor(name) {
+    await loadCloud();
+    const ai = await import(FIREBASE_SDK + 'firebase-ai.js');
+    const { Schema } = ai;
+    return ai.getGenerativeModel(ai.getAI(cloud.app, { backend: new ai.GoogleAIBackend() }), {
+      model: name,
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: Schema.object({
+          properties: {
+            readable: Schema.boolean(),
+            merchant: Schema.string(),
+            items: Schema.array({ items: Schema.object({
+              properties: { name: Schema.string(), quantity: Schema.number(), amount: Schema.number() },
+              optionalProperties: ['quantity'],
+            }) }),
+            charges: Schema.array({ items: Schema.object({ properties: { name: Schema.string(), amount: Schema.number() } }) }),
+            total: Schema.number(),
+            note: Schema.string(),
+          },
+          optionalProperties: ['merchant', 'charges', 'total', 'note'],
+        }),
+      },
+    });
+  }
+
+  // The bill as Gemini read it, trying the next model if one isn't available to this project
+  async function readBill(blob) {
+    const image = { inlineData: { data: await blobToBase64(blob), mimeType: 'image/jpeg' } };
+    let lastErr;
+    for (const name of scanModel ? [scanModel] : SCAN_MODELS) {
+      try {
+        const res = await (await scanModelFor(name)).generateContent([SCAN_PROMPT, image]);
+        scanModel = name;
+        return JSON.parse(res.response.text());
+      } catch (err) {
+        lastErr = err;
+        if (!/404|not found|not supported|permission|quota|429|unavailable/i.test(String(err && err.message))) break;
+      }
+    }
+    throw lastErr;
+  }
+
+  function scanError(err) {
+    const msg = String((err && err.message) || err);
+    if (/api-not-enabled|not been used|disabled|AI Logic/i.test(msg)) return 'Bill scanning isn\'t switched on for this app yet (Firebase console → AI Logic → Get started).';
+    if (/quota|429|exhausted/i.test(msg)) return 'Bill scanning has hit its free daily limit. Try again later, or enter the amounts yourself.';
+    if (/failed to fetch|network|offline/i.test(msg) || navigator.onLine === false) return 'No internet connection. Scanning needs to be online.';
+    return "Couldn't read the bill: " + escapeHtml(msg.slice(0, 160));
+  }
+
+  document.getElementById('scanBtn').addEventListener('click', () => document.getElementById('scanInput').click());
+  document.getElementById('scanInput').addEventListener('change', async ev => {
+    const file = ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    scan = null;
+    document.getElementById('scanUse').disabled = true;
+    document.getElementById('scanBody').innerHTML = '<div class="scan-loading"><span class="spin">🧾</span><br>Reading the bill…<br><small>This takes a few seconds.</small></div>';
+    openModal('scanModal');
+    let photo;
+    try {
+      photo = await compressBill(file);
+    } catch {
+      document.getElementById('scanBody').innerHTML = '<div class="scan-warn">Couldn\'t open that photo. Try taking it again.</div>';
+      return;
+    }
+    // The scanned photo also becomes the expense's bill photo
+    if (!split.cloud) {
+      if (billForm.url) URL.revokeObjectURL(billForm.url);
+      Object.assign(billForm, { blob: photo.blob, w: photo.w, h: photo.h, url: URL.createObjectURL(photo.blob) });
+      renderBillForm();
+    }
+    let data;
+    try {
+      data = await readBill(photo.blob);
+    } catch (err) {
+      console.warn('Scan:', err);
+      document.getElementById('scanBody').innerHTML = `<div class="scan-warn">${scanError(err)}</div>`;
+      return;
+    }
+    if (!data || data.readable === false || !Array.isArray(data.items) || !data.items.length) {
+      document.getElementById('scanBody').innerHTML = '<div class="scan-warn">That doesn\'t look like a bill I can read. Try a clearer, straight-on photo with the whole bill in view.</div>';
+      return;
+    }
+    const num = v => round2(Number(v) || 0);
+    scan = {
+      merchant: String(data.merchant || '').slice(0, 60),
+      total: num(data.total),
+      note: String(data.note || '').slice(0, 200),
+      items: data.items.slice(0, 80).map(it => ({
+        name: String(it.name || 'Item').slice(0, 60) + (it.quantity > 1 ? ` ×${it.quantity}` : ''), amount: num(it.amount), who: [],
+      })),
+      charges: (Array.isArray(data.charges) ? data.charges : []).slice(0, 20).map(c => ({ name: String(c.name || 'Charge').slice(0, 40), amount: num(c.amount) })),
+      people: [{ key: '', name: 'You' }, ...split.friends.map(f => ({ key: f, name: splitName(f) }))],
+    };
+    renderScan();
+  });
+
+  const scanSum = list => round2(list.reduce((t, x) => t + (Number(x.amount) || 0), 0));
+
+  // Each person's amount: their items (shared ones split evenly), then charges in proportion
+  function scanShares() {
+    const keys = scan.people.map(p => p.key);
+    const sub = Object.fromEntries(keys.map(k => [k, 0]));
+    scan.items.forEach(it => {
+      const who = it.who.length ? it.who : keys;
+      who.forEach(k => { sub[k] += it.amount / who.length; });
+    });
+    const itemsTotal = scanSum(scan.items), charges = scanSum(scan.charges), total = round2(itemsTotal + charges);
+    const out = {};
+    keys.forEach(k => { out[k] = round2(sub[k] + charges * (itemsTotal ? sub[k] / itemsTotal : 1 / keys.length)); });
+    // Paise lost to rounding go to you, so the shares add up to the bill exactly
+    out[''] = round2(out[''] + total - keys.reduce((t, k) => t + out[k], 0));
+    return { out, total, itemsTotal, charges };
+  }
+
+  function renderScan() {
+    const s = scan;
+    const items = s.items.map((it, i) => `
+      <div class="scan-item" data-item="${i}">
+        <div class="scan-item-top">
+          <input class="scan-name" value="${escapeHtml(it.name)}" aria-label="Item name" data-field="name">
+          <input class="scan-amt" value="${it.amount}" inputmode="decimal" aria-label="Amount" data-field="amount">
+          <button type="button" data-remove-item="${i}" aria-label="Remove item">✕</button>
+        </div>
+        <div class="chips">${s.people.map(p => `<button type="button" class="chip scan-who${it.who.includes(p.key) ? ' on' : ''}" data-who="${escapeHtml(p.key)}">${escapeHtml(p.name)}</button>`).join('')}
+          ${it.who.length ? '' : '<span class="scan-shared">shared by everyone</span>'}</div>
+      </div>`).join('');
+    const charges = s.charges.map((c, i) => `
+      <div class="scan-item" data-charge="${i}">
+        <div class="scan-item-top">
+          <input class="scan-name" value="${escapeHtml(c.name)}" aria-label="Charge name" data-field="name">
+          <input class="scan-amt" value="${c.amount}" inputmode="decimal" aria-label="Amount" data-field="amount">
+          <button type="button" data-remove-charge="${i}" aria-label="Remove charge">✕</button>
+        </div>
+      </div>`).join('');
+    document.getElementById('scanBody').innerHTML = `
+      <div class="scan-head">${s.merchant ? `<b>${escapeHtml(s.merchant)}</b> · ` : ''}${s.items.length} item${s.items.length === 1 ? '' : 's'}${s.total ? ` · bill total <b>${formatMoney(s.total)}</b>` : ''}</div>
+      ${s.note ? `<div class="scan-warn">Gemini says: ${escapeHtml(s.note)}</div>` : ''}
+      <div id="scanCheck"></div>
+      <p class="hint" style="margin-top:4px">Tap who had each item. Items with nobody picked are shared by everyone. Fix any name or amount Gemini got wrong.</p>
+      ${split.cloud ? '' : `<div class="add-row" style="margin-top:8px">
+        <input type="text" id="scanPerson" list="friendList" placeholder="Add someone who was there" autocomplete="off">
+        <button type="button" class="btn secondary small" id="scanPersonAdd">Add</button></div>`}
+      <div>${items}</div>
+      <button type="button" class="link-btn" data-add-item>＋ Add item</button>
+      ${s.charges.length ? `<h2 style="margin:16px 0 0;font-size:15px;color:var(--muted);font-weight:600">Taxes &amp; charges</h2><p class="hint" style="margin-top:2px">Shared in proportion to what each person had.</p>${charges}` : ''}
+      <button type="button" class="link-btn" data-add-charge>＋ Add tax or charge</button>
+      <div class="scan-totals" id="scanTotals"></div>`;
+    updateScanTotals();
+  }
+
+  function updateScanTotals() {
+    const { out, total, itemsTotal, charges } = scanShares();
+    document.getElementById('scanTotals').innerHTML =
+      scan.people.map(p => `<div class="row"><span>${escapeHtml(p.name)}</span><span>${formatMoney(out[p.key])}</span></div>`).join('') +
+      `<div class="row sum"><span>Total</span><span>${formatMoney(total)}</span></div>`;
+    const off = scan.total && Math.abs(total - scan.total) >= 1;
+    document.getElementById('scanCheck').innerHTML = off
+      ? `<div class="scan-warn">Items ${formatMoney(itemsTotal)} + charges ${formatMoney(charges)} = ${formatMoney(total)}, but the bill says ${formatMoney(scan.total)}. Check the amounts below.</div>` : '';
+    document.getElementById('scanUse').disabled = !(total > 0) || scan.people.length < 2;
+    document.getElementById('scanUse').textContent = scan.people.length < 2 ? 'Add someone to split with' : 'Use this split';
+  }
+
+  function addScanPerson() {
+    const input = document.getElementById('scanPerson');
+    const name = canonFriend(input.value);
+    input.value = '';
+    if (!name || scan.people.some(p => p.key.toLowerCase() === name.toLowerCase() || p.name.toLowerCase() === name.toLowerCase())) return;
+    scan.people.push({ key: name, name });
+    renderScan();
+  }
+
+  const scanBody = document.getElementById('scanBody');
+  scanBody.addEventListener('click', ev => {
+    if (!scan) return;
+    const who = ev.target.closest('[data-who]');
+    if (who) {
+      const it = scan.items[Number(who.closest('[data-item]').dataset.item)];
+      const k = who.dataset.who;
+      it.who = it.who.includes(k) ? it.who.filter(x => x !== k) : [...it.who, k];
+      return renderScan();
+    }
+    const ri = ev.target.closest('[data-remove-item]');
+    if (ri) { scan.items.splice(Number(ri.dataset.removeItem), 1); return renderScan(); }
+    const rc = ev.target.closest('[data-remove-charge]');
+    if (rc) { scan.charges.splice(Number(rc.dataset.removeCharge), 1); return renderScan(); }
+    if (ev.target.closest('[data-add-item]')) { scan.items.push({ name: 'Item', amount: 0, who: [] }); return renderScan(); }
+    if (ev.target.closest('[data-add-charge]')) { scan.charges.push({ name: 'Charge', amount: 0 }); return renderScan(); }
+    if (ev.target.id === 'scanPersonAdd') addScanPerson();
+  });
+  scanBody.addEventListener('keydown', ev => {
+    if (ev.target.id === 'scanPerson' && ev.key === 'Enter') { ev.preventDefault(); addScanPerson(); }
+  });
+  scanBody.addEventListener('input', ev => {
+    const field = ev.target.dataset.field;
+    if (!scan || !field) return;
+    const row = ev.target.closest('[data-item], [data-charge]');
+    const list = row.dataset.item !== undefined ? scan.items : scan.charges;
+    const entry = list[Number(row.dataset.item ?? row.dataset.charge)];
+    if (field === 'name') entry.name = ev.target.value;
+    else entry.amount = evalAmount(ev.target.value) ?? 0;
+    updateScanTotals();
+  });
+
+  document.getElementById('scanCancel').addEventListener('click', () => closeModal('scanModal'));
+  // Fill the expense form: the bill's total, everyone in the split, each person's amount
+  document.getElementById('scanUse').addEventListener('click', () => {
+    const { out, total } = scanShares();
+    const friends = scan.people.filter(p => p.key).map(p => p.key);
+    friends.forEach(f => { if (!split.friends.includes(f)) split.friends.push(f); });
+    split.on = true;
+    split.mode = 'custom';
+    split.custom = { '': String(out['']) };
+    split.friends.forEach(f => { split.custom[f] = String(out[f] || 0); });
+    amountInput.value = String(total);
+    updateCalc();
+    const note = document.getElementById('note');
+    if (!note.value.trim() && scan.merchant) note.value = scan.merchant;
+    renderSplit();
+    closeModal('scanModal');
   });
 
   // ---------- Bill photos ----------
