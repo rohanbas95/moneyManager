@@ -782,6 +782,13 @@
   .report-row .am.spent { font-weight: 600; }
   .report-row .am.paid { color: var(--muted); }
   .report-head .nm { padding-left: 22px; }
+  .transfer-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 14px; }
+  .transfer-row:last-of-type { border-bottom: none; }
+  .transfer-row .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .transfer-row .arrow { color: var(--muted); padding: 0 4px; }
+  .transfer-row .amt { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .transfer-row .go { font-size: 12px; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .simplify-tag { font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 10px; padding: 2px 8px; }
 </style>
 </head>
 <body>
@@ -1019,6 +1026,9 @@
         <button type="button" class="btn secondary small" id="groupMemberAdd">Add</button>
       </div>
       <p class="hint" id="groupHint">You're always in the group. When adding a split bill, pick the group and its members fill in for you.</p>
+      <label class="split-toggle"><input type="checkbox" id="groupSimplify"> Simplify debts</label>
+      <p class="hint" style="margin-top:4px">Combines what everyone owes so the group can settle up in as few payments as possible.
+        For example, if Bob owes you ₹500 and you owe Carol ₹500, Bob pays Carol directly. Nobody owes more or less in total.</p>
       <div class="btn-row">
         <button type="button" class="btn danger" id="groupDeleteBtn" style="display:none">Delete</button>
         <button type="button" class="btn secondary" onclick="closeModal('groupModal')">Cancel</button>
@@ -3276,6 +3286,8 @@
 
   function renderGroupView(el, g) {
     const members = friendBalances(g.id);
+    const simp = g.simplify ? localGroupSimplified(g) : null;
+    if (simp) members.forEach(m => { m.bal = simp.balWith(m.name); });
     // Each bill once (it shows up under every friend on it), with what it did to your balance overall
     const items = [];
     expenses.forEach(e => {
@@ -3305,6 +3317,7 @@
         ${members.length ? sortByBalance(members).map(x => friendRowHtml(x, 'Tap to settle up in this group')).join('')
           : '<p class="hint" style="margin-top:0">No members yet. Tap Edit to add some.</p>'}
       </div>
+      ${simp ? transfersHtml(simp.transfers, { local: g.id }) : ''}
       ${spendingReportHtml(localGroupSpending(g))}
       <div class="card">
         <h2>Activity</h2>
@@ -3345,6 +3358,8 @@
 
   document.getElementById('splitContent').addEventListener('click', ev => {
     if (ev.target.closest('[data-action="my-upi"]')) return editMyUpi();
+    const tr = ev.target.closest('[data-transfer]');
+    if (tr) return recordTransfer(Number(tr.dataset.transfer));
     const rep = ev.target.closest('[data-report]');
     if (rep) {
       reportSel = reportSel === rep.dataset.report ? null : rep.dataset.report;
@@ -3410,6 +3425,8 @@
     fillFriendList();
     const group = x ? (findGroup(x.group) ? x.group : '') : findGroup(groupId) ? groupId : '';
     const f = friend && friendBalances(group || undefined).find(b => b.name.toLowerCase() === friend.toLowerCase());
+    const sg = !x && f && findGroup(group);
+    if (sg && sg.simplify) f.bal = localGroupSimplified(sg).balWith(f.name);
     document.getElementById('settleTitle').textContent = x ? 'Edit payment' : 'Settle up';
     document.getElementById('settleFriend').value = x ? x.friend : friend || '';
     document.getElementById('settleAmount').value = x ? x.amount : f && !settled(f.bal) ? Math.abs(f.bal) : '';
@@ -3493,6 +3510,7 @@
   function openGroupModal(id) {
     const g = findGroup(id);
     groupEdit = { id: g ? g.id : null, cloud: null, members: g ? [...g.members] : [], existing: [], removed: [] };
+    document.getElementById('groupSimplify').checked = !!(g && g.simplify);
     document.getElementById('groupHint').textContent = "You're always in the group. When adding a split bill, pick the group and its members fill in for you.";
     document.getElementById('groupDeleteBtn').textContent = 'Delete';
     fillFriendList();
@@ -3544,8 +3562,9 @@
     const g = findGroup(groupEdit.id);
     const clash = groupNamed(name);
     if (clash && clash !== g) return alert(`There's already a group called "${clash.name}".`);
-    if (g) Object.assign(g, { name, members: groupEdit.members });
-    else groups.push({ id: newId(), name, members: groupEdit.members, createdAt: Date.now() });
+    const simplify = document.getElementById('groupSimplify').checked;
+    if (g) Object.assign(g, { name, members: groupEdit.members, simplify });
+    else groups.push({ id: newId(), name, members: groupEdit.members, simplify, createdAt: Date.now() });
     saveGroups();
     splitNav = { group: g ? g.id : groups[groups.length - 1].id, friend: null };
     closeModal('groupModal');
@@ -4133,7 +4152,18 @@
       id, name: g.members[id].name || 'Someone', joined: !!g.members[id].uid, left: !!g.members[id].left,
       bal: round2(((debt[id] || {})[me] || 0) - ((debt[me] || {})[id] || 0)),
     })).filter(r => !r.left || !settled(r.bal));
-    return { me, rows, items, ...owedTotals(rows) };
+    // Simplified: everyone's net in the group, settled in as few payments as possible
+    let transfers = null;
+    if (g.simplify) {
+      const nets = new Map();
+      Object.entries(debt).forEach(([a, owes]) => Object.entries(owes).forEach(([b, v]) => {
+        nets.set(a, (nets.get(a) || 0) - v);
+        nets.set(b, (nets.get(b) || 0) + v);
+      }));
+      transfers = simplifyDebts(nets);
+      rows.forEach(r => { r.bal = transferBalance(transfers, me, r.id); });
+    }
+    return { me, rows, items, transfers, ...owedTotals(rows) };
   }
 
   function cloudCardHtml() {
@@ -4241,6 +4271,7 @@
           </div>`;
         }).join('') : '<p class="hint" style="margin-top:0">Just you so far. Tap Invite to bring friends in, or Edit to add them by name.</p>'}
       </div>
+      ${t.transfers ? transfersHtml(t.transfers, { cloud: g.id, me: t.me }) : ''}
       ${spendingReportHtml(cloudGroupSpending(g))}
       <div class="card">
         <h2>Activity</h2>
@@ -4294,6 +4325,7 @@
     };
     fillFriendList();
     document.getElementById('groupTitle').textContent = g ? 'Edit shared group' : 'New shared group';
+    document.getElementById('groupSimplify').checked = !!(g && g.simplify);
     document.getElementById('groupName').value = g ? g.name || '' : '';
     document.getElementById('groupMemberInput').value = '';
     document.getElementById('groupHint').textContent = g
@@ -4315,11 +4347,12 @@
       const members = { [cloud.user.uid]: { name: myCloudName(), uid: cloud.user.uid, email: cloud.user.email } };
       groupEdit.members.forEach(n => { members['p_' + randomId(10)] = { name: n }; });
       cloudWrite(setDoc(ref, { name, createdBy: cloud.user.uid, createdAt: now, updatedAt: now,
-        inviteCode: randomId(24), memberUids: [cloud.user.uid], members, joins: {} }),
+        inviteCode: randomId(24), memberUids: [cloud.user.uid], members, joins: {},
+        simplify: document.getElementById('groupSimplify').checked }),
         "Firebase refused to create the group. Check the security rules from firestore.rules are published (Firestore Database → Rules).");
       splitNav = { group: null, friend: null, cloud: ref.id };
     } else {
-      const changes = { name, updatedAt: now };
+      const changes = { name, simplify: document.getElementById('groupSimplify').checked, updatedAt: now };
       groupEdit.members.forEach(n => { changes[`members.p_${randomId(10)}`] = { name: n }; });
       groupEdit.removed.forEach(id => { changes[`members.${id}`] = deleteField(); });
       cloudWrite(updateDoc(doc(cloud.db, 'groups', groupEdit.cloud), changes));
@@ -4567,6 +4600,110 @@
       { deleted: true, updatedAt: Date.now(), updatedBy: cloud.user.uid }));
     closeModal('settleModal');
     renderSplitTab();
+  }
+
+  // ---------- Simplify debts ----------
+  // Per group, like Splitwise: instead of everyone paying back whoever paid each bill, work out each
+  // person's net (what they're owed minus what they owe) and settle it in as few payments as possible.
+  // Totals never change; only who pays whom.
+
+  // nets: Map(person -> net, > 0 = gets money back). Biggest debtor pays biggest creditor, repeatedly.
+  function simplifyDebts(nets) {
+    const credit = [], debit = [];
+    nets.forEach((v, k) => {
+      v = round2(v);
+      if (v >= 0.01) credit.push({ k, v });
+      else if (v <= -0.01) debit.push({ k, v: -v });
+    });
+    const out = [];
+    while (credit.length && debit.length) {
+      credit.sort((a, b) => b.v - a.v);
+      debit.sort((a, b) => b.v - a.v);
+      const c = credit[0], d = debit[0], amount = round2(Math.min(c.v, d.v));
+      out.push({ from: d.k, to: c.k, amount });
+      c.v = round2(c.v - amount);
+      d.v = round2(d.v - amount);
+      if (c.v < 0.01) credit.shift();
+      if (d.v < 0.01) debit.shift();
+    }
+    return out;
+  }
+
+  // What `other` owes `me` under these payments (negative = you owe them)
+  function transferBalance(transfers, me, other) {
+    return round2(transfers.reduce((t, x) => t + (x.from === other && x.to === me ? x.amount : x.to === other && x.from === me ? -x.amount : 0), 0));
+  }
+
+  // A group on this device: everyone's net from its bills and its settle-ups. Keys: '' = you, else lowercase name.
+  function localGroupSimplified(g) {
+    const nets = new Map(), names = new Map([['', 'You']]);
+    const add = (name, v) => {
+      const key = name ? name.toLowerCase() : '';
+      if (name && !names.has(key)) names.set(key, canonFriend(name));
+      nets.set(key, (nets.get(key) || 0) + v);
+    };
+    expenses.forEach(e => {
+      if (!e.split || e.split.group !== g.id) return;
+      add(e.split.paidBy || '', e.split.total);
+      add('', -e.amount);
+      Object.entries(e.split.shares || {}).forEach(([name, v]) => add(name, -v));
+    });
+    settlements.forEach(x => {
+      if (x.group !== g.id) return;
+      // They paid you: they're owed that much more (owe less), you're owed less. And the other way round.
+      add(x.friend, x.dir === 'in' ? x.amount : -x.amount);
+      add('', x.dir === 'in' ? -x.amount : x.amount);
+    });
+    const transfers = simplifyDebts(nets).map(x => ({ ...x, fromName: names.get(x.from), toName: names.get(x.to) }));
+    return { transfers, balWith: name => transferBalance(transfers, '', name.toLowerCase()) };
+  }
+
+  let transferCtx = null; // { list, local | cloud, me } for the suggested payments on screen
+
+  function transfersHtml(list, ctx) {
+    transferCtx = { list, ...ctx };
+    const name = (key, given) => ctx.cloud ? cloudMemberName(ctx.cloud, key) : given;
+    return `
+      <div class="card">
+        <div class="card-head"><h2>💸 Suggested payments</h2><span class="simplify-tag">Simplified</span></div>
+        ${list.length ? list.map((x, i) => {
+          const from = name(x.from, x.fromName), to = name(x.to, x.toName);
+          const mine = ctx.cloud ? (x.from === ctx.me || x.to === ctx.me) : (x.from === '' || x.to === '');
+          return `
+          <div class="transfer-row" data-transfer="${i}">
+            <span class="who">${escapeHtml(from)} <span class="arrow">→</span> ${escapeHtml(to)}</span>
+            <span class="amt">${formatMoney(x.amount)}</span>
+            <span class="go">${mine ? 'Settle' : 'Record'}</span>
+          </div>`;
+        }).join('') + `<p class="hint">${list.length} payment${list.length === 1 ? '' : 's'} settle${list.length === 1 ? 's' : ''} the whole group. Tap one when it's been paid.</p>`
+          : '<p class="hint" style="margin-top:0">Everyone is settled up. 🎉</p>'}
+      </div>`;
+  }
+
+  // Tapped a suggested payment: your own opens Settle up ready to go; between two others, record it after a check
+  function recordTransfer(i) {
+    const ctx = transferCtx, x = ctx && ctx.list[i];
+    if (!x) return;
+    if (ctx.cloud) {
+      if (x.from === ctx.me || x.to === ctx.me) return openCloudPayment(ctx.cloud, x.from === ctx.me ? x.to : x.from);
+      const g = cloud.groups.get(ctx.cloud), name = id => cloudMemberName(ctx.cloud, id);
+      if (!g || !confirm(`Record that ${name(x.from)} paid ${name(x.to)} ${formatMoney(x.amount)}?`)) return;
+      const { doc, collection, setDoc } = cloud.fb;
+      const now = Date.now();
+      cloudWrite(setDoc(doc(collection(cloud.db, 'groups', g.id, 'payments')), { from: x.from, to: x.to, amount: x.amount,
+        date: todayISO(), note: '', createdAt: now, createdBy: cloud.user.uid, updatedAt: now, updatedBy: cloud.user.uid, deleted: false }));
+      return;
+    }
+    if (x.from === '' || x.to === '') return openSettle(x.from === '' ? x.toName : x.fromName, null, ctx.local);
+    if (!confirm(`Record that ${x.fromName} paid ${x.toName} ${formatMoney(x.amount)}?`)) return;
+    // This device only keeps what you and each friend owe each other, so a payment between two friends is
+    // kept as the payer settling with you and you settling with the receiver: their balances come out right
+    const note = `${x.fromName} paid ${x.toName} directly`, now = Date.now();
+    settlements.push(
+      { id: newId(), createdAt: now, friend: x.fromName, amount: x.amount, dir: 'in', date: todayISO(), note, group: ctx.local },
+      { id: newId(), createdAt: now + 1, friend: x.toName, amount: x.amount, dir: 'out', date: todayISO(), note, group: ctx.local });
+    saveSettlements();
+    render();
   }
 
   // ---------- Group spending report ----------
