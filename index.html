@@ -5592,8 +5592,9 @@
     const interestLeft = round2(loans.reduce((t, x) => t + (x.interestLeft || 0), 0));
     const owed = round2(loans.reduce((t, x) => t + x.outstanding, 0));
     const value = holdingNow(h).value;
-    const soFar = round2(buy + interestPaid + maint - (rentCounted ? rent : 0));
-    return { since, buyCosts, buy, tagged, entries, countByType, byType, fromCategory, monthly, before, maint, rent, rentEntries, rentCounted, loans, interestPaid, interestLeft, owed, value, soFar,
+    const added = round2(sumAmounts(holdingPayments(h, false))); // e.g. a renovation linked with "Goes into"
+    const soFar = round2(buy + added + interestPaid + maint - (rentCounted ? rent : 0));
+    return { since, buyCosts, buy, added, tagged, entries, countByType, byType, fromCategory, monthly, before, maint, rent, rentEntries, rentCounted, loans, interestPaid, interestLeft, owed, value, soFar,
       lifetime: round2(soFar + interestLeft), unknownInterest: loans.some(x => x.interestPaid === null) };
   }
 
@@ -5726,6 +5727,7 @@
       <div class="card">
         <h2>📋 Total cost of owning</h2>
         ${row('Buying costs', formatMoney(st.buy))}
+        ${st.added ? row('Added later (expenses that went into it)', formatMoney(st.added)) : ''}
         ${st.loans.length ? row('Loan interest paid so far', st.unknownInterest ? '<i>needs loan details</i>' : formatMoney(st.interestPaid)) : ''}
         ${row('Maintenance &amp; running costs', formatMoney(st.maint))}
         ${st.rent && st.rentCounted ? row('Rent received', '−' + formatMoney(st.rent)) : ''}
@@ -6071,11 +6073,19 @@
   }
 
   // Put in vs worth now, for investments and for assets with what you paid; skipped = assets without it
+  // What you've put into a holding: invested (funds), what you paid (gold), or for property the full
+  // cost of owning so far (buying costs, interest, maintenance, minus rent if counted); 0 = not known
+  function putInto(h) {
+    if (h.kind === 'investment') return holdingNow(h).invested || 0;
+    if (h.kind === 'asset') { const st = propertyStats(h); return st.buy || st.added ? st.soFar : 0; }
+    return holdingNow(h).cost || 0;
+  }
+
   function investedVsWorth(kinds = ['investment', 'asset', 'gold']) {
     let put = 0, worth = 0, skipped = 0;
     holdings.filter(h => kinds.includes(h.kind)).forEach(h => {
       const now = holdingNow(h);
-      const cost = h.kind === 'investment' ? now.invested : now.cost;
+      const cost = putInto(h);
       if (!cost) { skipped++; return; }
       put += cost;
       worth += now.value;
@@ -6097,8 +6107,9 @@
     } else if (h.kind === 'asset') {
       const loans = holdings.filter(l => l.kind === 'liability' && l.assetId === h.id);
       const owed = loans.reduce((t, l) => t + holdingNow(l).value, 0);
-      sub = [h.type, now.cost ? `paid ${formatMoney(now.cost)}` : '', loans.length ? `loan ${formatMoney(owed)} · yours ${formatMoney(now.value - owed)}` : ''].filter(Boolean).join(' · ');
-      amt = formatMoney(now.value) + plHtml(now.value, now.cost);
+      const cost = putInto(h);
+      sub = [h.type, cost ? `cost so far ${formatMoney(cost)}` : 'add buying costs', loans.length ? `loan ${formatMoney(owed)} · yours ${formatMoney(now.value - owed)}` : ''].filter(Boolean).join(' · ');
+      amt = formatMoney(now.value) + plHtml(now.value, cost);
     } else if (h.kind === 'gold') {
       sub = [h.type, h.purity && h.purity !== 'Other' ? h.purity : '', Number(h.weight) ? `${h.weight} g` : '', now.cost ? `paid ${formatMoney(now.cost)}` : ''].filter(Boolean).join(' · ');
       amt = formatMoney(now.value) + plHtml(now.value, now.cost);
@@ -6182,9 +6193,10 @@
           const row = (label, v, cls = '') => `<div class="plan-row ${cls}"><span>${label}</span><span>${v}</span></div>`;
           return `<div class="pl-box">
             ${row('Total invested (investments, property &amp; gold)', formatMoney(t.put))}
+            ${holdings.some(h => h.kind === 'asset' && putInto(h)) ? '<div class="pl-note" style="margin:-2px 0 4px">Property counts its full cost of owning so far: buying costs, loan interest and maintenance (minus rent, if counted).</div>' : ''}
             ${row('Worth now', formatMoney(t.worth))}
             ${row(t.gain >= 0 ? 'Profit' : 'Loss', `<span class="${t.gain >= 0 ? 'pos-ink' : 'neg-ink'}">${t.gain >= 0 ? '+' : '−'}${formatMoney(Math.abs(t.gain))} (${t.gain >= 0 ? '' : '−'}${Math.abs(t.gain / t.put * 100).toFixed(1)}%)</span>`, 'sum')}
-            ${t.skipped ? `<div class="pl-note">${t.skipped} item${t.skipped === 1 ? '' : 's'} without “What you paid” ${t.skipped === 1 ? 'isn’t' : 'aren’t'} included.</div>` : ''}
+            ${t.skipped ? `<div class="pl-note">${t.skipped} item${t.skipped === 1 ? '' : 's'} without a purchase cost (“What you paid”, or buying costs for property) ${t.skipped === 1 ? 'isn’t' : 'aren’t'} included.</div>` : ''}
           </div>`;
         })()}
         ${holdings.length ? '' : '<p class="hint" style="text-align:center">Add your bank accounts, investments, assets and loans below to see your net worth. Then, when adding an expense like a SIP or an EMI, pick what it “Goes into”.</p>'}
