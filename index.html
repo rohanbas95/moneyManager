@@ -362,6 +362,16 @@
   .h-links label { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--text); }
   .h-links input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
   .invest-tag { color: var(--accent-ink); white-space: nowrap; }
+  .plan-row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .plan-row span:first-child { color: var(--muted); }
+  .plan-row.sum { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); font-weight: 700; }
+  .plan-row.sum span:first-child { color: var(--text); }
+  .plan-row.sub { padding-left: 14px; font-size: 13px; }
+  .plan-goal { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); font-size: 14px; }
+  .plan-goal b { font-variant-numeric: tabular-nums; }
+  .plan-goal .note { margin-top: 3px; font-size: 12px; color: var(--muted); }
+  .plan-ok { color: var(--income); font-weight: 600; }
+  .plan-short { color: var(--danger-ink); font-weight: 600; }
   /* Toast: short message at the bottom, sometimes with an Undo */
   .toast {
     position: fixed; left: 50%; bottom: 92px; z-index: 70;
@@ -1084,9 +1094,13 @@
         <select id="detail"></select>
       </div>
       <div id="holdingField" hidden>
-        <label for="toHolding">Goes into (optional)</label>
+        <label for="toHolding" id="toHoldingLabel">Goes into (optional)</label>
         <select id="toHolding"></select>
         <p class="hint" id="holdingHint" style="margin-top:4px"></p>
+      </div>
+      <div id="paidFromField" hidden>
+        <label for="paidFrom">Paid from (optional)</label>
+        <select id="paidFrom"></select>
       </div>
       <label for="note">Note (optional)</label>
       <input type="text" id="note" placeholder="e.g. Lunch with friends">
@@ -2294,7 +2308,8 @@
                 <div class="cat">${[e.category, e.subcategory, detailOf(e)].filter(Boolean).map(mark).join(' › ')}${e.split
                   ? ` · <span class="split-tag">👥 your share of ${formatMoney(e.split.total)}</span>` : ''}${e.shared
                   ? ` · <span class="split-tag">☁️ ${sharedEntryTag(e)}</span>` : ''}${investedIn(e)
-                  ? ` · <span class="invest-tag">📈 into ${escapeHtml(investedIn(e).name)}</span>` : ''}</div>
+                  ? ` · <span class="invest-tag">📈 into ${escapeHtml(investedIn(e).name)}</span>` : ''}${typeOf(e) === 'income' && findHolding(e.toHolding)
+                  ? ` · <span class="invest-tag">🏦 into ${escapeHtml(findHolding(e.toHolding).name)}</span>` : ''}</div>
               </div>
               ${typeOf(e) === 'income'
                 ? `<div class="amount income">+${incomeMoney(e.amount)}</div>`
@@ -3078,6 +3093,7 @@
     fillCategoryOptions(category);
     fillSubcategoryOptions(category, sub);
     fillDetailOptions(category, detail);
+    autoSalaryAccount();
   }
 
   // Up to 6 categories of this type, most recently used first, as one-tap chips above the list
@@ -3165,7 +3181,9 @@
     document.getElementById('date').value = todayISO();
     split = newSplit();
     resetBillForm(null);
+    holdingTouched = false;
     fillHoldingOptions('');
+    fillPaidFrom(defaultPaidFrom());
     setEntryType('expense');
     updateCalc();
     document.getElementById('deleteBtn').style.display = 'none';
@@ -3188,7 +3206,9 @@
     editingId = id;
     split = splitFromEntry(e);
     resetBillForm(e);
+    holdingTouched = true; // keep what was chosen
     fillHoldingOptions(e.toHolding || '');
+    fillPaidFrom(e.paidFrom || '');
     document.getElementById('amount').value = e.split ? e.split.total : e.amount;
     updateCalc();
     setEntryType(typeOf(e), e.category, e.subcategory || '', e.detail || '');
@@ -3212,6 +3232,7 @@
     fillSubcategoryOptions(category, '');
     fillDetailOptions(category, '');
     renderRecentCats();
+    autoSalaryAccount();
   });
 
   document.getElementById('entryTypeToggle').addEventListener('click', ev => {
@@ -3221,10 +3242,11 @@
   });
 
   document.getElementById('subcategory').addEventListener('change', async ev => {
-    if (ev.target.value !== ADD_NEW) return;
+    if (ev.target.value !== ADD_NEW) return autoSalaryAccount();
     const category = document.getElementById('category').value;
     const sub = addSubcategory(category, await askText(`New subcategory for ${category}`, { placeholder: 'e.g. Groceries', ok: 'Add' })) || '';
     fillSubcategoryOptions(category, sub);
+    autoSalaryAccount();
   });
 
   document.getElementById('detail').addEventListener('change', async ev => {
@@ -3274,13 +3296,24 @@
     if (detail || (editing && editing.detail)) data.detail = detail;
     const bill = commitBillForm(editing && editing.bill);
     if (bill) data.bill = bill;
-    const toHolding = entryType === 'expense' && !data.split && document.getElementById('toHolding').value;
+    // Where the money went / came from (investments, assets, loans, accounts: see "Wealth")
+    const toHolding = (entryType === 'income' || !data.split) && document.getElementById('toHolding').value;
+    const paidFrom = entryType === 'expense' && !data.split && document.getElementById('paidFrom').value;
     if (toHolding) data.toHolding = toHolding;
+    if (paidFrom) data.paidFrom = paidFrom;
+    // linkedAt: when it was linked, so it counts on top of values typed in before that
+    if ((toHolding || paidFrom) && (!editing || editing.toHolding !== (toHolding || undefined) || editing.paidFrom !== (paidFrom || undefined))) {
+      data.linkedAt = Date.now();
+    }
+    // A new expense's account becomes the default next time (editing an old one doesn't change it)
+    if (!editing && entryType === 'expense' && !data.split) { ui.lastPaidFrom = paidFrom || ''; saveUi(); }
     if (editing) {
       Object.assign(editing, data);
       if (!data.split) delete editing.split;
       if (!bill) delete editing.bill;
       if (!toHolding) delete editing.toHolding;
+      if (!paidFrom) delete editing.paidFrom;
+      if (!toHolding && !paidFrom) delete editing.linkedAt;
     } else if (editingId) {
       // Deleted on another device while this form was open: saving brings it back
       expenses.push({ id: editingId, createdAt: Date.now(), ...data });
@@ -5141,8 +5174,8 @@
       { key: 'name', label: 'Name', placeholder: 'e.g. Parag Parikh Flexi Cap', required: true },
       { key: 'type', label: 'Type', type: 'select', options: INVEST_TYPES },
       { key: 'platform', label: 'Held on (optional)', placeholder: 'e.g. Groww', list: ['Groww', 'Zerodha / Coin', 'Kuvera', 'Paytm Money', 'ET Money', 'Bank'] },
-      { key: 'invested', label: 'Invested so far', type: 'money', hint: 'Total you had put in before tracking it here. New money from expenses is added on top.' },
-      { key: 'value', label: 'Current value', type: 'money', value: true, hint: 'Copy it from Groww (or your app) now and then.' },
+      { key: 'invested', label: 'Invested so far', type: 'money', value: true, hint: 'Copy both numbers from Groww (or your app) now and then. New money you add as an expense is added to both.' },
+      { key: 'value', label: 'Current value', type: 'money', value: true },
       { key: 'sip', label: 'Monthly SIP (optional)', type: 'money' },
     ],
     asset: [
@@ -5150,6 +5183,16 @@
       { key: 'type', label: 'Type', type: 'select', options: ASSET_TYPES },
       { key: 'value', label: 'Current value (estimate)', type: 'money', value: true },
       { key: 'cost', label: 'What you paid (optional)', type: 'money' },
+      // A home: what it really costs (see homeCostHtml)
+      { key: 'purchaseDate', label: 'Bought on', type: 'date', home: true },
+      { key: 'otherCosts', label: 'Other buying costs (optional)', type: 'money', home: true, hint: 'Stamp duty, registration, brokerage, interiors…' },
+      { key: 'maintenance', label: 'Maintenance per month (optional)', type: 'money', home: true },
+      { key: 'maintCategory', label: 'Or count actual maintenance spending from', type: 'category', catType: 'expense', home: true,
+        hint: 'If you record maintenance as expenses, pick their category to use the real amounts instead.' },
+      { key: 'rented', label: 'It is (or was) rented out', type: 'checkbox', home: true },
+      { key: 'rent', label: 'Rent per month', type: 'money', home: true, rent: true },
+      { key: 'rentSince', label: 'Rented out since', type: 'date', home: true, rent: true },
+      { key: 'rentCategory', label: 'Or count actual rent income from', type: 'category', catType: 'income', home: true, rent: true },
     ],
     liability: [
       { key: 'name', label: 'Name', placeholder: 'e.g. SBI Home loan', required: true },
@@ -5158,6 +5201,7 @@
       { key: 'emi', label: 'EMI per month (optional)', type: 'money' },
       { key: 'rate', label: 'Interest rate % per year (optional)', type: 'number', placeholder: 'e.g. 8.5', hint: 'Lets the app work out how much of each payment reduces the loan.' },
       { key: 'original', label: 'Original loan amount (optional)', type: 'money' },
+      { key: 'startDate', label: 'First EMI date (optional)', type: 'date', hint: 'With the original amount and EMI, lets the app work out interest paid so far.' },
       { key: 'endDate', label: 'Last EMI date (optional)', type: 'date' },
       { key: 'assetId', label: 'Loan for (optional)', type: 'holding', kinds: ['asset'] },
     ],
@@ -5180,24 +5224,49 @@
 
   const findHolding = id => (id ? holdings.find(h => h.id === id) : null);
 
+  // Once: earlier versions only counted money added after a value was typed in by when the expense was
+  // created, so expenses linked later never reached the value. Count them from when the value was typed.
+  function migrateHoldingLinks() {
+    const KEY = 'moneyManager.linksFixed.v1';
+    if (localStorage.getItem(KEY)) return;
+    let changed = false;
+    expenses.forEach(e => {
+      const h = e.toHolding && findHolding(e.toHolding);
+      if (!h || e.linkedAt) return;
+      e.linkedAt = (e.createdAt || 0) > (h.valueAt || 0) ? e.createdAt : (h.valueAt || 0) + 1;
+      changed = true;
+    });
+    localStorage.setItem(KEY, '1');
+    if (changed) saveExpenses();
+  }
+
   // The holding an expense goes into (investment, asset or loan), if any
   function investedIn(e) {
-    const h = e.toHolding && findHolding(e.toHolding);
+    const h = typeOf(e) === 'expense' && e.toHolding && findHolding(e.toHolding);
     return h && ['investment', 'asset', 'liability'].includes(h.kind) ? h : null;
   }
 
-  // Expenses going into this holding; after = only those added since its value was typed in
+  // Linked after the holding's value was last typed in, so not part of that number yet
+  const linkedAfter = (e, h) => (e.linkedAt || e.createdAt || 0) > (h.valueAt || 0);
+
+  // Expenses going into this holding; after = only those linked since its value was typed in
   function holdingPayments(h, after) {
-    return expenses.filter(e => e.toHolding === h.id && typeOf(e) === 'expense' && (!after || (e.createdAt || 0) > (h.valueAt || 0)));
+    return expenses.filter(e => e.toHolding === h.id && typeOf(e) === 'expense' && (!after || linkedAfter(e, h)));
   }
 
   // { value (what it's worth / owed now), invested (investments: total put in) }
   function holdingNow(h) {
     const num = v => Number(v) || 0;
-    if (h.kind === 'account') return { value: num(h.balance) };
+    if (h.kind === 'account') {
+      // Balance typed in, plus income that went into it, minus spending paid from it, since then
+      const into = sumAmounts(expenses.filter(e => typeOf(e) === 'income' && e.toHolding === h.id && linkedAfter(e, h)));
+      const out = sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.paidFrom === h.id && linkedAfter(e, h)));
+      return { value: round2(num(h.balance) + into - out), into, out };
+    }
     if (h.kind === 'investment') {
+      // Invested and value were typed in together (as apps like Groww show them); new money adds to both
       const added = sumAmounts(holdingPayments(h, true));
-      return { value: round2(num(h.value) + added), invested: round2(num(h.invested) + sumAmounts(holdingPayments(h, false))) };
+      return { value: round2(num(h.value) + added), invested: round2(num(h.invested) + added) };
     }
     if (h.kind === 'asset') return { value: round2(num(h.value) + sumAmounts(holdingPayments(h, true))) };
     if (h.kind === 'liability') {
@@ -5224,6 +5293,159 @@
     return { saved, target, left, pct: target ? Math.min(100, saved / target * 100) : 0, perMonth };
   }
 
+  // ---- Loans: months and interest left, interest paid so far ----
+  function loanStats(l) {
+    const P = holdingNow(l).value, r = (Number(l.rate) || 0) / 1200, emi = Number(l.emi) || 0;
+    let monthsLeft = null, interestLeft = null, interestPaid = null;
+    if (emi > 0 && P > 0) {
+      if (r === 0) monthsLeft = Math.ceil(P / emi);
+      else if (emi > P * r) monthsLeft = Math.ceil(-Math.log(1 - r * P / emi) / Math.log(1 + r));
+      if (monthsLeft !== null) interestLeft = round2(Math.max(0, emi * monthsLeft - P));
+    } else if (P === 0) { monthsLeft = 0; interestLeft = 0; }
+    // EMIs paid so far minus the principal that's gone = interest paid
+    if (Number(l.original) && emi && l.startDate) {
+      const start = new Date(l.startDate + 'T00:00:00'), now = new Date();
+      const paidMonths = Math.max(0, (now.getFullYear() - start.getFullYear()) * 12 + now.getMonth() - start.getMonth() + (now.getDate() >= start.getDate() ? 1 : 0));
+      interestPaid = round2(Math.max(0, emi * paidMonths - (Number(l.original) - P)));
+    }
+    return { outstanding: P, monthsLeft, interestLeft, interestPaid };
+  }
+
+  // ---- Home: what it really costs ----
+  function homeCostHtml(h) {
+    const months = (from, to = new Date()) => {
+      if (!from) return 0;
+      const d = new Date(from + 'T00:00:00');
+      return Math.max(0, (to.getFullYear() - d.getFullYear()) * 12 + to.getMonth() - d.getMonth());
+    };
+    const since = h.purchaseDate || '';
+    const loans = holdings.filter(l => l.kind === 'liability' && l.assetId === h.id).map(l => ({ l, ...loanStats(l) }));
+    const price = Number(h.cost) || 0, other = Number(h.otherCosts) || 0;
+    const maint = h.maintCategory
+      ? sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.category === h.maintCategory && (!since || e.date >= since)))
+      : (Number(h.maintenance) || 0) * months(since);
+    const rent = !h.rented ? 0 : h.rentCategory
+      ? sumAmounts(expenses.filter(e => typeOf(e) === 'income' && e.category === h.rentCategory && e.date >= (h.rentSince || since || '0000')))
+      : (Number(h.rent) || 0) * months(h.rentSince || since);
+    const paid = loans.reduce((t, x) => t + (x.interestPaid || 0), 0);
+    const left = loans.reduce((t, x) => t + (x.interestLeft || 0), 0);
+    const owed = loans.reduce((t, x) => t + x.outstanding, 0);
+    const unknownInterest = loans.some(x => x.interestPaid === null);
+    const soFar = round2(price + other + paid + maint - rent), lifetime = round2(soFar + left);
+    const value = holdingNow(h).value;
+    if (!price && !loans.length && !maint && !rent) return '';
+    const row = (label, v, cls = '') => `<div class="plan-row ${cls}"><span>${label}</span><span>${v}</span></div>`;
+    const yrs = since ? ` (${Math.floor(months(since) / 12)} yr ${months(since) % 12} mo)` : '';
+    return `
+      <div class="card">
+        <h2>🏠 ${escapeHtml(h.name)}: what it really costs</h2>
+        ${row('Bought for', formatMoney(price))}
+        ${other ? row('Stamp duty, registration, interiors…', formatMoney(other)) : ''}
+        ${loans.length ? row('Loan interest paid so far', unknownInterest ? '<i>add loan start date</i>' : formatMoney(paid)) : ''}
+        ${maint ? row(`Maintenance so far${yrs}`, formatMoney(maint)) : ''}
+        ${rent ? row('Rent received', '−' + formatMoney(rent)) : ''}
+        ${row('Cost so far', formatMoney(soFar), 'sum')}
+        ${loans.length ? row('Loan interest still to pay', formatMoney(left)) : ''}
+        ${loans.length ? row('Total cost over the loan', formatMoney(lifetime), 'sum') : ''}
+        <div style="margin-top:10px"></div>
+        ${row('Worth now (your estimate)', formatMoney(value))}
+        ${loans.length ? row('Loan still owed', formatMoney(owed)) : ''}
+        ${loans.length ? row('Yours if sold today', formatMoney(value - owed), 'sum') : ''}
+        <p class="hint">${value >= soFar ? `Worth ${formatMoney(value - soFar)} more than it has cost you so far.` : `Worth ${formatMoney(soFar - value)} less than it has cost you so far.`}
+          Maintenance and interest are real costs of owning; rent brings them down.</p>
+      </div>`;
+  }
+
+  // ---- Goal plan: what you can save each month, and how it covers your goals ----
+  // Uses the last 3 full months: average income and spending, regular bills, plus SIPs, EMIs and insurance.
+  function goalPlan() {
+    const now = new Date();
+    const keys = [1, 2, 3].map(i => { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+    const inMonth = (e, k) => e.date.startsWith(k);
+    const used = keys.filter(k => expenses.some(e => inMonth(e, k)));
+    const n = used.length || 1;
+    const window = expenses.filter(e => used.some(k => inMonth(e, k)));
+    // Plans are in whole rupees
+    const income = Math.round(sumAmounts(window.filter(e => typeOf(e) === 'income')) / n);
+    const spendList = window.filter(e => typeOf(e) === 'expense' && !investedIn(e));
+    const spend = Math.round(sumAmounts(spendList) / n);
+    // Regular bills: the same thing (category + note) every month, at a similar amount
+    const groupsMap = new Map();
+    spendList.forEach(e => {
+      const key = [e.category, e.subcategory || '', (e.note || '').trim().toLowerCase()].join('|');
+      const g = groupsMap.get(key) || { name: e.note || e.subcategory || e.category, byMonth: {} };
+      const k = e.date.slice(0, 7);
+      g.byMonth[k] = (g.byMonth[k] || 0) + e.amount;
+      groupsMap.set(key, g);
+    });
+    const regular = n >= 2 ? [...groupsMap.values()].filter(g => {
+      const v = Object.values(g.byMonth);
+      if (v.length < n) return false;
+      const mid = [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)];
+      return v.every(x => Math.abs(x - mid) <= mid * 0.25);
+    }).map(g => ({ name: g.name, amount: Math.round(Object.values(g.byMonth).reduce((a, b) => a + b, 0) / n) })).sort((a, b) => b.amount - a.amount) : [];
+    const sips = round2(holdings.filter(h => h.kind === 'investment').reduce((t, h) => t + (Number(h.sip) || 0), 0));
+    const emis = round2(holdings.filter(h => h.kind === 'liability' && holdingNow(h).value > 0).reduce((t, h) => t + (Number(h.emi) || 0), 0));
+    const insurance = Math.round(holdings.filter(h => h.kind === 'insurance').reduce((t, h) => t + (Number(h.premium) || 0), 0) / 12);
+    const free = Math.round(income - spend - sips - emis - insurance);
+    // Each goal: what's left, per month to make the date, minus SIPs already flowing into its funds
+    const goals = holdings.filter(h => h.kind === 'goal').map(g => {
+      const p = goalProgress(g);
+      const sipIn = round2((g.links || []).reduce((t, id) => { const h = findHolding(id); return t + (h && h.kind === 'investment' ? Number(h.sip) || 0 : 0); }, 0));
+      const need = p.perMonth ? Math.max(0, Math.ceil(p.perMonth - sipIn)) : 0;
+      return { g, ...p, sipIn, need };
+    });
+    const totalNeed = goals.reduce((t, x) => t + x.need, 0);
+    const scale = totalNeed > 0 && free < totalNeed ? Math.max(0, free) / totalNeed : 1;
+    goals.forEach(x => {
+      x.give = Math.floor(x.need * scale);
+      const monthly = x.give + x.sipIn;
+      x.reachBy = x.left && monthly > 0 ? new Date(now.getFullYear(), now.getMonth() + Math.ceil(x.left / monthly), 1) : null;
+    });
+    return { months: used, income, spend, regular, sips, emis, insurance, free, goals, totalNeed, short: Math.max(0, totalNeed - Math.max(0, free)) };
+  }
+
+  function goalPlanHtml() {
+    const plan = goalPlan();
+    if (!plan.goals.length) return '';
+    const monthName = k => new Date(k + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'short' });
+    const row = (label, v, cls = '') => `<div class="plan-row ${cls}"><span>${label}</span><span>${v}</span></div>`;
+    if (!plan.income) return `<div class="card"><h2>🧭 Goal plan</h2><p class="hint" style="margin-top:0">Add your salary (as income) for a month or two and the app will work out how much you can save for each goal.</p></div>`;
+    const period = plan.months.length ? plan.months.slice().reverse().map(monthName).join(', ') : 'this month';
+    const fmtMonth = d => d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+    const goals = plan.goals.map(x => {
+      const name = escapeHtml(x.g.name);
+      if (!x.left) return `<div class="plan-goal">🎉 <b>${name}</b>: reached</div>`;
+      if (!x.g.date) {
+        const spare = Math.max(0, plan.free - plan.totalNeed);
+        return `<div class="plan-goal"><b>${name}</b>: ${formatMoney(x.left)} to go
+          <div class="note">Add a target date to plan it.${spare > 0 ? ` With ${formatMoney(spare)}/month spare you'd get there around ${fmtMonth(new Date(new Date().getFullYear(), new Date().getMonth() + Math.ceil(x.left / spare), 1))}.` : ''}</div></div>`;
+      }
+      const target = new Date(x.g.date + 'T00:00:00');
+      const fits = x.give >= x.need;
+      return `<div class="plan-goal"><b>${name}</b>: save <b>${formatMoney(x.need)}</b>/month${x.sipIn ? ` on top of ${formatMoney(x.sipIn)} SIP` : ''}
+        <span class="${fits ? 'plan-ok' : 'plan-short'}">${fits ? '✓ fits' : '⚠ doesn’t fit'}</span>
+        <div class="note">${formatMoney(x.left)} left by ${fmtMonth(target)}.${!fits ? (x.reachBy ? ` With ${formatMoney(x.give)}/month you'd reach it around ${fmtMonth(x.reachBy)}.` : ' Nothing left over each month for it right now.') : ''}</div></div>`;
+    }).join('');
+    const summary = plan.short
+      ? `<p class="hint"><span class="plan-short">Short by ${formatMoney(plan.short)}/month.</span> Options: spend less on the regular bills or other spending, push a target date out, or lower a target.</p>`
+      : `<p class="hint"><span class="plan-ok">All goals fit.</span> ${formatMoney(Math.max(0, plan.free - plan.totalNeed))}/month still spare after them.</p>`;
+    return `
+      <div class="card">
+        <h2>🧭 Goal plan</h2>
+        <p class="hint" style="margin-top:0">Average of ${period}.</p>
+        ${row('Income', formatMoney(plan.income))}
+        ${row('Day-to-day spending', '−' + formatMoney(plan.spend))}
+        ${plan.regular.slice(0, 4).map(r => row('↳ ' + escapeHtml(r.name) + ' (every month)', formatMoney(r.amount), 'sub')).join('')}
+        ${plan.sips ? row('SIPs', '−' + formatMoney(plan.sips)) : ''}
+        ${plan.emis ? row('Loan EMIs', '−' + formatMoney(plan.emis)) : ''}
+        ${plan.insurance ? row('Insurance (yearly premiums ÷ 12)', '−' + formatMoney(plan.insurance)) : ''}
+        ${row('Free to save each month', (plan.free < 0 ? '−' : '') + formatMoney(Math.abs(plan.free)), 'sum')}
+        ${goals}
+        ${summary}
+      </div>`;
+  }
+
   function netWorth() {
     const sum = kinds => round2(holdings.filter(h => kinds.includes(h.kind)).reduce((t, h) => t + holdingNow(h).value, 0));
     const parts = { account: sum(['account']), investment: sum(['investment']), asset: sum(['asset']) };
@@ -5233,29 +5455,63 @@
 
   // ---- Expense form: "Goes into" ----
 
+  let holdingTouched = false; // picked by hand in this form, so don't change it automatically
+
+  const holdingsOf = kind => holdings.filter(h => h.kind === kind).sort((a, b) => (b.salary ? 1 : 0) - (a.salary ? 1 : 0) || a.name.localeCompare(b.name));
+  const holdingOptions = (kind, label) => {
+    const list = holdingsOf(kind);
+    return list.length ? `<optgroup label="${label}">${list.map(h => `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}${h.salary ? ' ⭐' : ''}</option>`).join('')}</optgroup>` : '';
+  };
+
+  // Spending: into an investment / asset / loan. Income: into a bank account.
   function fillHoldingOptions(selected) {
     const sel = document.getElementById('toHolding');
-    const pick = kind => holdings.filter(h => h.kind === kind).sort((a, b) => a.name.localeCompare(b.name));
-    const group = (kind, label) => {
-      const list = pick(kind);
-      return list.length ? `<optgroup label="${label}">${list.map(h => `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`).join('')}</optgroup>` : '';
-    };
-    sel.innerHTML = '<option value="">— Nothing: a normal expense —</option>' +
-      group('investment', '📈 Investments') + group('asset', '🏠 Assets') + group('liability', '💳 Loans (EMI / prepayment)');
+    sel.innerHTML = entryType === 'income'
+      ? '<option value="">— Not tracked —</option>' + holdingOptions('account', '🏦 Bank accounts')
+      : '<option value="">— Nothing: a normal expense —</option>' + holdingOptions('investment', '📈 Investments') +
+        holdingOptions('asset', '🏠 Assets') + holdingOptions('liability', '💳 Loans (EMI / prepayment)');
+    const h = findHolding(selected);
+    sel.value = h && (entryType === 'income') === (h.kind === 'account') ? selected : '';
+    showHoldingField();
+  }
+
+  function fillPaidFrom(selected) {
+    const sel = document.getElementById('paidFrom');
+    sel.innerHTML = '<option value="">— Not tracked —</option>' + holdingOptions('account', '🏦 Bank accounts');
     sel.value = findHolding(selected) ? selected : '';
+  }
+
+  // New spending comes out of the account you used last (your salary account to begin with)
+  function defaultPaidFrom() {
+    if (ui.lastPaidFrom !== undefined) return findHolding(ui.lastPaidFrom) ? ui.lastPaidFrom : '';
+    const salary = holdings.find(h => h.kind === 'account' && h.salary);
+    return salary ? salary.id : '';
+  }
+
+  // Income under a "Salary" category or subcategory goes into the salary account, unless you chose otherwise
+  function autoSalaryAccount() {
+    if (entryType !== 'income' || holdingTouched) return;
+    const salary = holdings.find(h => h.kind === 'account' && h.salary);
+    const text = document.getElementById('category').value + ' ' + document.getElementById('subcategory').value;
+    document.getElementById('toHolding').value = salary && /salary/i.test(text) ? salary.id : '';
     showHoldingField();
   }
 
   function showHoldingField() {
-    const any = holdings.some(h => ['investment', 'asset', 'liability'].includes(h.kind));
+    const income = entryType === 'income';
+    const any = income ? holdings.some(h => h.kind === 'account') : holdings.some(h => ['investment', 'asset', 'liability'].includes(h.kind));
     const sel = document.getElementById('toHolding');
-    document.getElementById('holdingField').hidden = !any || entryType !== 'expense' || split.on || (!sel.value && !any);
+    document.getElementById('holdingField').hidden = !any || (!income && split.on);
+    document.getElementById('paidFromField').hidden = income || split.on || !holdings.some(h => h.kind === 'account');
+    document.getElementById('toHoldingLabel').textContent = income ? 'Goes into account (optional)' : 'Goes into (optional)';
     const h = findHolding(sel.value);
-    document.getElementById('holdingHint').textContent = !h ? 'For SIPs, gold, a loan EMI…: counts as Invested, not spent.'
+    document.getElementById('holdingHint').textContent = income
+      ? (h ? `Adds to the balance of ${h.name}.` : 'Pick the account it was paid into to keep its balance up to date.')
+      : !h ? 'For SIPs, gold, a loan EMI…: counts as Invested, not spent.'
       : h.kind === 'liability' ? `Reduces what's left on ${h.name}${Number(h.rate) ? ' (the interest part is worked out from its rate)' : ''}. Counts as Invested, not spent.`
       : `Adds to ${h.name}. Counts as Invested, not spent.`;
   }
-  document.getElementById('toHolding').addEventListener('change', showHoldingField);
+  document.getElementById('toHolding').addEventListener('change', () => { holdingTouched = true; showHoldingField(); });
 
   // ---- Wealth tab ----
 
@@ -5265,7 +5521,8 @@
     const now = holdingNow(h);
     let sub = '', amt = '';
     if (h.kind === 'account') {
-      sub = [h.bank, h.valueAt ? 'updated ' + new Date(h.valueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''].filter(Boolean).join(' · ');
+      sub = [h.bank, h.valueAt ? 'updated ' + new Date(h.valueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '',
+        now.into || now.out ? `+${formatMoney(now.into)} in, −${formatMoney(now.out)} out since` : ''].filter(Boolean).join(' · ');
       amt = formatMoney(now.value);
     } else if (h.kind === 'investment') {
       const gain = round2(now.value - now.invested);
@@ -5278,7 +5535,9 @@
       amt = formatMoney(now.value);
     } else if (h.kind === 'liability') {
       const paid = Number(h.original) ? Math.min(100, Math.max(0, (1 - now.value / h.original) * 100)) : null;
-      sub = [h.type, Number(h.emi) ? `EMI ${formatMoney(h.emi)}` : '', Number(h.rate) ? `${h.rate}%` : '', paid !== null ? `${paid.toFixed(0)}% paid off` : ''].filter(Boolean).join(' · ');
+      const ls = loanStats(h);
+      sub = [h.type, Number(h.emi) ? `EMI ${formatMoney(h.emi)}` : '', Number(h.rate) ? `${h.rate}%` : '', paid !== null ? `${paid.toFixed(0)}% paid off` : '',
+        ls.monthsLeft ? `${Math.floor(ls.monthsLeft / 12)}y ${ls.monthsLeft % 12}m left` : ''].filter(Boolean).join(' · ');
       amt = formatMoney(now.value);
     } else if (h.kind === 'insurance') {
       const due = h.renewal ? daysUntil(h.renewal) : null;
@@ -5299,7 +5558,7 @@
     return `
       <div class="h-row" data-holding="${escapeHtml(h.id)}">
         <div class="info"><div class="name">${escapeHtml(h.name)}${h.salary ? '<span class="salary-badge">⭐ Salary</span>' : ''}</div>
-          <div class="sub">${sub}</div></div>
+          <div class="sub wrap">${sub}</div></div>
         <div class="amt">${amt}</div>
       </div>`;
   }
@@ -5339,10 +5598,12 @@
         ${bar}
         ${holdings.length ? '' : '<p class="hint" style="text-align:center">Add your bank accounts, investments, assets and loans below to see your net worth. Then, when adding an expense like a SIP or an EMI, pick what it “Goes into”.</p>'}
       </div>
+      ${goalPlanHtml()}
       ${section('goal')}
       ${section('account')}
       ${section('investment')}
       ${section('asset')}
+      ${holdings.filter(h => h.kind === 'asset' && h.type === 'Home').map(homeCostHtml).join('')}
       ${section('liability')}
       ${section('insurance')}`;
   }
@@ -5363,18 +5624,34 @@
     kind = h ? h.kind : kind;
     const fields = HOLDING_FIELDS[kind];
     const now = h ? holdingNow(h) : { value: 0 };
-    holdingEdit = { kind, h, shown: now.value };
+    const nowFor = key => (key === 'invested' ? now.invested : now.value) || 0;
+    // The numbers shown for the snapshot fields (money added since included), to tell if you changed them
+    const shown = Object.fromEntries(fields.filter(f => f.value).map(f => [f.key, nowFor(f.key)]));
+    holdingEdit = { kind, h, shown };
     const k = HOLDING_KINDS[kind];
     document.getElementById('holdingTitle').textContent = (h ? 'Edit ' : 'Add ') + k.one;
     const val = f => {
       if (!h) return '';
-      if (f.value) return now.value || '';
+      if (f.value) return nowFor(f.key) || '';
       const v = h[f.key];
       return v === undefined || v === null ? '' : v;
     };
     document.getElementById('holdingFields').innerHTML = fields.map(f => {
       const id = 'hf_' + f.key;
       const hint = f.hint ? `<p class="hint" style="margin-top:4px">${escapeHtml(f.hint)}</p>` : '';
+      return `<div class="hf" data-key="${f.key}"${f.home ? ' data-home="1"' : ''}${f.rent ? ' data-rent="1"' : ''}>${fieldHtml(f, id, hint)}</div>`;
+    }).join('');
+    document.getElementById('holdingDelete').style.display = h ? '' : 'none';
+    showHoldingConditionals();
+    openModal('holdingModal');
+    if (!h) setTimeout(() => document.getElementById('hf_name').focus(), 50);
+
+    function fieldHtml(f, id, hint) {
+      if (f.type === 'category') {
+        const opts = categories.filter(c => typeOf(c) === f.catType);
+        return `<label for="${id}">${escapeHtml(f.label)}</label><select id="${id}"><option value="">— Don't use —</option>${opts.map(c =>
+          `<option value="${escapeHtml(c.name)}"${h && h[f.key] === c.name ? ' selected' : ''}>${escapeHtml(iconFor(c.name))} ${escapeHtml(c.name)}</option>`).join('')}</select>${hint}`;
+      }
       if (f.type === 'checkbox') {
         return `<label class="split-toggle"><input type="checkbox" id="${id}"${h && h[f.key] ? ' checked' : ''}> ${escapeHtml(f.label)}</label>${hint}`;
       }
@@ -5401,11 +5678,21 @@
         <input type="${type}" id="${id}"${mode}${list} autocomplete="off" placeholder="${escapeHtml(f.placeholder || (f.type === 'money' ? '0' : ''))}"
           value="${escapeHtml(String(val(f)))}"${f.required && f.type !== 'money' ? ' required' : ''}>
         ${f.list ? `<datalist id="${id}_list">${f.list.map(o => `<option value="${escapeHtml(o)}"></option>`).join('')}</datalist>` : ''}${hint}`;
-    }).join('');
-    document.getElementById('holdingDelete').style.display = h ? '' : 'none';
-    openModal('holdingModal');
-    if (!h) setTimeout(() => document.getElementById('hf_name').focus(), 50);
+    }
   }
+
+  // Home-only fields show for a Home; rent fields when it's rented out
+  function showHoldingConditionals() {
+    const type = document.getElementById('hf_type');
+    const isHome = holdingEdit.kind === 'asset' && type && type.value === 'Home';
+    const rented = document.getElementById('hf_rented');
+    document.querySelectorAll('#holdingFields .hf[data-home]').forEach(el => {
+      el.hidden = !isHome || (el.dataset.rent === '1' && !(rented && rented.checked));
+    });
+  }
+  document.getElementById('holdingFields').addEventListener('change', ev => {
+    if (ev.target.id === 'hf_type' || ev.target.id === 'hf_rented') showHoldingConditionals();
+  });
 
   document.getElementById('holdingForm').addEventListener('submit', async ev => {
     ev.preventDefault();
@@ -5415,6 +5702,7 @@
       const el = document.getElementById('hf_' + f.key);
       if (f.type === 'checkbox') data[f.key] = el.checked;
       else if (f.type === 'holdings') data[f.key] = [...el.querySelectorAll('input:checked')].map(i => i.value);
+      else if (f.type === 'category') data[f.key] = el.value;
       else if (f.type === 'money' || f.type === 'number') {
         const text = el.value.trim();
         const v = text ? evalAmount(text) : 0;
@@ -5424,19 +5712,19 @@
       } else data[f.key] = el.value.trim();
     }
     if (!data.name) return;
-    // The snapshot only moves if you changed it (otherwise money added since keeps counting on top)
-    const vf = HOLDING_FIELDS[kind].find(f => f.value);
+    // The snapshot only moves if you changed one of its numbers (otherwise money added since keeps counting on top)
+    const snap = HOLDING_FIELDS[kind].filter(f => f.value);
     let target = h;
     if (!target) {
       target = { id: newId(), kind, createdAt: Date.now() };
       holdings.push(target);
     }
-    if (vf) {
-      if (!h || round2(data[vf.key]) !== round2(shown)) {
+    if (snap.length) {
+      if (!h || snap.some(f => round2(data[f.key]) !== round2(shown[f.key]))) {
         target.valueAt = Date.now();
-        target.history = [...(target.history || []), { date: todayISO(), value: data[vf.key] }].slice(-60);
+        target.history = [...(target.history || []), { date: todayISO(), ...Object.fromEntries(snap.map(f => [f.key, data[f.key]])) }].slice(-60);
       } else {
-        data[vf.key] = h[vf.key];
+        snap.forEach(f => { data[f.key] = h[f.key]; });
       }
     }
     // Only one salary account
@@ -7428,6 +7716,7 @@ If the photo is not a bill or receipt, set "readable" to false.`;
     if (!document.getElementById('guide').hidden) showGuideStep();
   });
 
+  migrateHoldingLinks();
   render();
   setSyncStatus(syncConfig && syncConfig.lastSync ? 'ok' : 'syncing');
   syncNow();
