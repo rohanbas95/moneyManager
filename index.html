@@ -5442,7 +5442,8 @@
   function loanPlan(l) {
     const P = Number(l.original) || 0, r = (Number(l.rate) || 0) / 1200, n = Math.round((Number(l.tenure) || 0) * 12);
     if (!P || !n || !l.startDate) return null;
-    const emi = Math.round(r ? P * r * (1 + r) ** n / ((1 + r) ** n - 1) : P / n);
+    // Rounded up like banks do, so the plan ends on time (rounding down leaves a tiny extra EMI)
+    const emi = Math.ceil(r ? P * r * (1 + r) ** n / ((1 + r) ** n - 1) : P / n);
     const a = amortize(P, r, emi);
     if (!a) return null;
     // Where the balance would be today on that plan
@@ -5478,9 +5479,10 @@
       interestPaid = round2(Number(l.interestPaid) + (now.interestSince || 0));
       interestSource = 'statement';
     } else if (Number(l.original) && emi && l.startDate) {
-      // Everything paid (EMIs + prepayments) minus the principal that's gone = interest
-      interestPaid = round2(Math.max(0, emi * emisSoFar(l) + (Number(l.prepaid) || 0) - (Number(l.original) - P)));
-      interestSource = 'estimate';
+      // Everything paid (EMIs + prepayments) minus the principal that's gone = interest. If more principal is gone
+      // than that could cover, there were prepayments we don't know about: can't estimate, ask instead.
+      const est = emi * emisSoFar(l) + (Number(l.prepaid) || 0) - (Number(l.original) - P);
+      if (est > 0) { interestPaid = round2(est); interestSource = 'estimate'; } else interestSource = 'unknown';
     }
     return { outstanding: P, monthsLeft, interestLeft, interestPaid, interestSource };
   }
@@ -5625,7 +5627,8 @@
           <div class="loan-part"><h4>✅ Actually</h4>
           ${x.interestPaid !== null ? row(`Interest paid so far${x.interestSource === 'estimate' ? ' <small style="color:var(--muted)">(estimated)</small>' : ''}`, formatMoney(x.interestPaid))
             + (x.principalPaid !== null ? row('Principal repaid so far', formatMoney(x.principalPaid)) : '')
-            : row('Interest paid so far', '<i>add it from your statement (Edit)</i>')}
+            : row('Interest paid so far', '<i>add it from your statement (Edit)</i>')
+              + (x.interestSource === 'unknown' ? `<div class="pl-note">You've repaid ${formatMoney(Math.max(0, x.original - x.outstanding))} of the loan, more than your EMIs alone could have, so you've prepaid. Add the interest paid so far (from your bank's interest certificate) or your total prepayments to see what prepaying saved.</div>` : '')}
           ${row('Principal still owed', formatMoney(x.outstanding))}
           ${x.interestLeft !== null ? row('Interest still to pay', formatMoney(x.interestLeft)) : ''}
           ${x.payoff ? row('Last EMI', `${x.payoff.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })} (${yrsMo(x.monthsLeft)} left)`) : ''}
