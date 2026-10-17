@@ -1265,13 +1265,23 @@
   <div class="modal">
     <h3 id="costTitle">Add buying cost</h3>
     <form id="costForm">
-      <label for="costLabel">What for</label>
+      <div id="costTypeField" hidden>
+        <label for="costRunType">Type</label>
+        <select id="costRunType"></select>
+      </div>
+      <label for="costLabel" id="costLabelText">What for</label>
       <input type="text" id="costLabel" list="costLabels" autocomplete="off" required placeholder="e.g. Stamp duty">
       <datalist id="costLabels"></datalist>
       <label for="costAmount">Amount</label>
       <input class="big" type="text" id="costAmount" inputmode="decimal" autocomplete="off" required placeholder="0">
-      <label for="costDate">Date (optional)</label>
-      <input type="date" id="costDate">
+      <div id="costDateField">
+        <label for="costDate">Date (optional)</label>
+        <input type="date" id="costDate">
+      </div>
+      <div id="costYearField" hidden>
+        <label for="costYear">Year</label>
+        <select id="costYear"></select>
+      </div>
       <div class="btn-row">
         <button type="button" class="btn danger" id="costDelete" style="display:none">Delete</button>
         <button type="button" class="btn secondary" onclick="closeModal('costModal')">Cancel</button>
@@ -5258,10 +5268,6 @@
       { key: 'maintBefore', label: 'Maintenance before you tracked it here (optional)', type: 'money', hint: 'One total for older running costs, so the full cost adds up.' },
       { key: 'maintenance', label: 'Fixed maintenance per month (optional)', type: 'money',
         hint: 'Only if you don’t add it as expenses: counted for every month since you bought it.' },
-      { key: 'rented', label: 'It is (or was) rented out', type: 'checkbox', home: true },
-      { key: 'rent', label: 'Rent per month', type: 'money', home: true, rent: true },
-      { key: 'rentSince', label: 'Rented out since', type: 'date', home: true, rent: true },
-      { key: 'rentCategory', label: 'Or count actual rent income from', type: 'category', catType: 'income', home: true, rent: true },
     ],
     gold: [
       { key: 'name', label: 'Name', placeholder: 'e.g. Wedding jewellery, Gold coins', required: true },
@@ -5314,6 +5320,23 @@
     holdings.forEach(h => {
       if (h.kind === 'asset' && h.type === 'Gold & jewellery') { h.kind = 'gold'; h.type = /coin|bar|biscuit/i.test(h.name) ? 'Coins / bars' : 'Jewellery'; movedGold = true; }
       if (h.kind === 'goal' && h.links && !h.alloc) { h.alloc = Object.fromEntries(h.links.map(id => [id, '100%'])); delete h.links; movedGold = true; }
+    });
+    // Rent settings (monthly since a date, or a category of income) became yearly entries
+    holdings.forEach(h => {
+      if (h.kind !== 'asset' || h.rentEntries || !h.rented) return;
+      const byYear = {};
+      const from = h.rentSince || h.purchaseDate || '';
+      if (h.rentCategory) {
+        expenses.filter(e => typeOf(e) === 'income' && e.category === h.rentCategory && (!from || e.date >= from))
+          .forEach(e => { const y = Number(e.date.slice(0, 4)); byYear[y] = (byYear[y] || 0) + e.amount; });
+      } else if (Number(h.rent) && from) {
+        const d = new Date(from + 'T00:00:00'), now = new Date();
+        for (let m = new Date(d.getFullYear(), d.getMonth(), 1); m < new Date(now.getFullYear(), now.getMonth(), 1); m.setMonth(m.getMonth() + 1)) {
+          byYear[m.getFullYear()] = (byYear[m.getFullYear()] || 0) + Number(h.rent);
+        }
+      }
+      h.rentEntries = Object.entries(byYear).map(([year, amount]) => ({ id: newId(), year: Number(year), amount: round2(amount), note: '' }));
+      movedGold = true;
     });
     // Price fields became a list of buying costs
     holdings.forEach(h => {
@@ -5548,23 +5571,29 @@
     const buyCosts = h.buyCosts || [];
     const buy = round2(sumAmounts(buyCosts));
     const tagged = expenses.filter(e => typeOf(e) === 'expense' && e.costOf === h.id);
-    const byType = {};
-    tagged.forEach(e => { const t = e.costType || 'Other'; byType[t] = round2((byType[t] || 0) + e.amount); });
+    // Past running costs entered on the page only (not expenses, so not in monthly spending)
+    const entries = h.runCosts || [];
+    const byType = {}, countByType = {};
+    [...tagged.map(e => [e.costType, e.amount]), ...entries.map(c => [c.type, c.amount])].forEach(([t, amount]) => {
+      t = t || 'Other';
+      byType[t] = round2((byType[t] || 0) + amount);
+      countByType[t] = (countByType[t] || 0) + 1;
+    });
     // Older ways of counting maintenance: a category of expenses, or a fixed amount each month
     const fromCategory = h.maintCategory ? sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.category === h.maintCategory && !e.costOf && (!since || e.date >= since))) : 0;
     const monthly = (Number(h.maintenance) || 0) * monthsSince(since);
     const before = Number(h.maintBefore) || 0;
-    const maint = round2(sumAmounts(tagged) + fromCategory + monthly + before);
-    const rent = !h.rented ? 0 : h.rentCategory
-      ? sumAmounts(expenses.filter(e => typeOf(e) === 'income' && e.category === h.rentCategory && e.date >= (h.rentSince || since || '0000')))
-      : (Number(h.rent) || 0) * monthsSince(h.rentSince || since);
+    const maint = round2(sumAmounts(tagged) + sumAmounts(entries) + fromCategory + monthly + before);
+    const rentEntries = [...(h.rentEntries || [])].sort((a, b) => b.year - a.year);
+    const rent = round2(sumAmounts(rentEntries));
+    const rentCounted = h.rentInCost !== false;
     const loans = holdings.filter(l => l.kind === 'liability' && l.assetId === h.id).map(l => ({ l, ...loanDetail(l) }));
     const interestPaid = round2(loans.reduce((t, x) => t + (x.interestPaid || 0), 0));
     const interestLeft = round2(loans.reduce((t, x) => t + (x.interestLeft || 0), 0));
     const owed = round2(loans.reduce((t, x) => t + x.outstanding, 0));
     const value = holdingNow(h).value;
-    const soFar = round2(buy + interestPaid + maint - rent);
-    return { since, buyCosts, buy, tagged, byType, fromCategory, monthly, before, maint, rent, loans, interestPaid, interestLeft, owed, value, soFar,
+    const soFar = round2(buy + interestPaid + maint - (rentCounted ? rent : 0));
+    return { since, buyCosts, buy, tagged, entries, countByType, byType, fromCategory, monthly, before, maint, rent, rentEntries, rentCounted, loans, interestPaid, interestLeft, owed, value, soFar,
       lifetime: round2(soFar + interestLeft), unknownInterest: loans.some(x => x.interestPaid === null) };
   }
 
@@ -5588,18 +5617,23 @@
     const colors = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)', 'var(--p5)', 'var(--p6)', 'var(--p7)', 'var(--p8)'];
     const typeColor = t => colors[costTypesFor(h).indexOf(t) % colors.length] || 'var(--muted)';
     const typedTotal = types.reduce((t, [, v]) => t + v, 0);
-    const recent = [...st.tagged].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 8);
+    // Expenses and past entries together, newest first
+    const recent = [
+      ...st.tagged.map(e => ({ attr: `data-exp="${escapeHtml(e.id)}"`, title: e.note || e.costType || e.category, type: e.costType || 'Other', date: e.date, amount: e.amount, at: e.createdAt || 0, past: false })),
+      ...st.entries.map(c => ({ attr: `data-runcost="${escapeHtml(c.id)}"`, title: c.label || c.type, type: c.type || 'Other', date: c.date || '', amount: c.amount, at: 0, past: true })),
+    ].sort((a, b) => b.date.localeCompare(a.date) || b.at - a.at);
     const maintBody = `
       ${typedTotal ? `<div class="type-bar">${types.map(([t, v]) => `<span style="width:${v / typedTotal * 100}%;background:${typeColor(t)}" title="${escapeHtml(t)}"></span>`).join('')}</div>` : ''}
       ${types.map(([t, v]) => `<div class="cost-row static"><div class="lbl"><i style="display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;background:${typeColor(t)}"></i>${escapeHtml(t)}
-          <small>${(c => `${c} payment${c === 1 ? '' : 's'}`)(st.tagged.filter(e => (e.costType || 'Other') === t).length)}</small></div><div class="amt">${formatMoney(v)}</div></div>`).join('')}
+          <small>${(c => `${c} payment${c === 1 ? '' : 's'}`)(st.countByType[t] || 0)}</small></div><div class="amt">${formatMoney(v)}</div></div>`).join('')}
       ${st.fromCategory ? `<div class="cost-row static"><div class="lbl">From “${escapeHtml(h.maintCategory)}” expenses</div><div class="amt">${formatMoney(st.fromCategory)}</div></div>` : ''}
       ${st.monthly ? `<div class="cost-row static"><div class="lbl">Fixed ${formatMoney(h.maintenance)}/month<small>${yrsMo(monthsSince(st.since))}</small></div><div class="amt">${formatMoney(st.monthly)}</div></div>` : ''}
       ${st.before ? `<div class="cost-row static"><div class="lbl">Before tracking here</div><div class="amt">${formatMoney(st.before)}</div></div>` : ''}
-      ${recent.length ? `<details class="more"><summary>Recent payments</summary>${recent.map(e => `
-        <div class="cost-row" data-exp="${escapeHtml(e.id)}"><div class="lbl">${escapeHtml(e.note || e.costType || e.category)}<small>${fmtDate(e.date)} · ${escapeHtml(e.costType || 'Other')}</small></div>
-          <div class="amt">${formatMoney(e.amount)}</div></div>`).join('')}</details>` : ''}
-      ${!st.maint ? `<p class="hint" style="margin-top:0">Add ${h.type === 'Vehicle' ? 'services, insurance, tyres, fuel, repairs' : 'society maintenance, repairs, property tax'}… as expenses with “Cost of” set to this, and they show up here by type.</p>` : ''}`;
+      ${recent.length ? `<details class="more"><summary>All payments (${recent.length})</summary>${recent.map(x => `
+        <div class="cost-row" ${x.attr}><div class="lbl">${escapeHtml(x.title)}<small>${[x.date ? fmtDate(x.date) : '', x.title === x.type ? '' : x.type, x.past ? 'past entry' : 'expense'].filter(Boolean).join(' · ')}</small></div>
+          <div class="amt">${formatMoney(x.amount)}</div></div>`).join('')}</details>` : ''}
+      ${!st.maint ? `<p class="hint" style="margin-top:0">Add ${h.type === 'Vehicle' ? 'services, insurance, tyres, fuel, repairs' : 'society maintenance, repairs, property tax'}… and they show up here by type.
+        New ones as expenses (they count in your monthly spending); older ones as past costs (they don't).</p>` : ''}`;
     // Loans
     const loanBody = st.loans.map(x => {
       const l = x.l;
@@ -5669,21 +5703,32 @@
       <div class="card">
         <div class="card-head"><h2>🔧 Maintenance &amp; running costs</h2><span class="h-section-total">${formatMoney(st.maint)}</span></div>
         ${maintBody}
-        <button class="link-btn" data-pact="add-maint" style="margin-top:4px">＋ Add a cost</button>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px">
+          <button class="link-btn" data-pact="add-maint">＋ Add as expense</button>
+          <button class="link-btn" data-pact="add-past">＋ Add a past cost</button>
+        </div>
       </div>
       <div class="card">
         <div class="card-head"><h2>🏦 Loan</h2>${st.loans.length ? `<span class="h-section-total">${formatMoney(st.owed)} owed</span>` : ''}</div>
         ${loanBody || '<p class="hint" style="margin-top:0">No loan linked. If you took one for this, add it to see how much interest you pay over its life.</p>'}
         <button class="link-btn" data-pact="add-loan" style="margin-top:6px">＋ Add a loan for this</button>
       </div>
-      ${h.rented ? `<div class="card"><div class="card-head"><h2>💰 Rent received</h2><span class="h-section-total">${formatMoney(st.rent)}</span></div>
-        <p class="hint" style="margin-top:0">${h.rentCategory ? `From your “${escapeHtml(h.rentCategory)}” income` : `${formatMoney(h.rent)}/month since ${fmtDate(h.rentSince || st.since)}`}. It brings the cost of owning down.</p></div>` : ''}
+      <div class="card">
+        <div class="card-head"><h2>💰 Rent received</h2><span class="h-section-total">${formatMoney(st.rent)}</span></div>
+        ${st.rentEntries.map(r => `
+          <div class="cost-row" data-rent="${escapeHtml(r.id)}"><div class="lbl">${r.year}${r.note ? `<small>${escapeHtml(r.note)}</small>` : ''}</div>
+            <div class="amt">${formatMoney(r.amount)}</div></div>`).join('')
+          || '<p class="hint" style="margin-top:0">If it’s rented out, add what it earned each year.</p>'}
+        <button class="link-btn" data-pact="add-rent" style="margin-top:4px">＋ Add rent for a year</button>
+        ${st.rent ? `<label class="split-toggle"><input type="checkbox" data-pact="rent-toggle"${st.rentCounted ? ' checked' : ''}> Count rent in the cost of owning</label>
+          <p class="hint" style="margin-top:4px">On: rent brings the cost of owning down. Off: it's shown separately.</p>` : ''}
+      </div>
       <div class="card">
         <h2>📋 Total cost of owning</h2>
         ${row('Buying costs', formatMoney(st.buy))}
         ${st.loans.length ? row('Loan interest paid so far', st.unknownInterest ? '<i>needs loan details</i>' : formatMoney(st.interestPaid)) : ''}
         ${row('Maintenance &amp; running costs', formatMoney(st.maint))}
-        ${st.rent ? row('Rent received', '−' + formatMoney(st.rent)) : ''}
+        ${st.rent && st.rentCounted ? row('Rent received', '−' + formatMoney(st.rent)) : ''}
         ${row('Cost so far', formatMoney(st.soFar), 'sum')}
         ${st.loans.length ? row('Loan interest still to pay', formatMoney(st.interestLeft)) : ''}
         ${st.loans.length ? row('Total cost by the end of the loan', formatMoney(st.lifetime), 'sum') : ''}
@@ -5692,7 +5737,7 @@
         ${st.loans.length ? row('Loan still owed', '−' + formatMoney(st.owed)) : ''}
         ${row('Yours if sold today', formatMoney(st.value - st.owed), 'sum')}
         <p class="hint">${!st.buy ? 'Add its buying costs to see whether it’s worth more or less than it cost you.' : gain >= 0 ? `Worth ${money(gain)} more than it has cost you so far.` : `Worth ${money(gain)} less than it has cost you so far.`}
-          Interest and running costs are real costs of owning${h.rented ? '; rent brings them down' : ''}.</p>
+          Interest and running costs are real costs of owning${st.rent ? st.rentCounted ? '; rent brings them down' : `. Rent of ${formatMoney(st.rent)} isn't counted here (switch it on above)` : ''}.</p>
       </div>`;
   }
 
@@ -5717,29 +5762,53 @@
   };
   let costEdit = null; // { h, item }
 
-  function openCostForm(h, itemId) {
-    const item = (h.buyCosts || []).find(c => c.id === itemId) || null;
-    costEdit = { h, item };
-    document.getElementById('costTitle').textContent = item ? 'Edit buying cost' : 'Add buying cost';
-    document.getElementById('costLabels').innerHTML = (BUY_COST_LABELS[h.type] || BUY_COST_LABELS.other).map(l => `<option value="${escapeHtml(l)}"></option>`).join('');
-    document.getElementById('costLabel').value = item ? item.label : (h.buyCosts || []).length ? '' : (BUY_COST_LABELS[h.type] || BUY_COST_LABELS.other)[0];
+  // mode 'buy' = a buying cost; 'run' = a past running cost (an entry only, not an expense); 'rent' = a year's rent
+  function openCostForm(h, itemId, mode = 'buy') {
+    const run = mode === 'run', rentMode = mode === 'rent';
+    const list = (rentMode ? h.rentEntries : run ? h.runCosts : h.buyCosts) || [];
+    const item = list.find(c => c.id === itemId) || null;
+    costEdit = { h, item, mode };
+    document.getElementById('costTitle').textContent = (item ? 'Edit ' : 'Add ') + (rentMode ? 'rent for a year' : run ? 'past running cost' : 'buying cost');
+    // Rent: a year instead of a date; the latest year without an entry is picked first
+    document.getElementById('costDateField').hidden = rentMode;
+    document.getElementById('costYearField').hidden = !rentMode;
+    if (rentMode) {
+      const now = new Date().getFullYear(), first = Math.min(now, Number((h.purchaseDate || '').slice(0, 4)) || now - 10);
+      const years = Array.from({ length: now - first + 1 }, (_, i) => now - i);
+      const taken = new Set(list.filter(r => r !== item).map(r => r.year));
+      document.getElementById('costYear').innerHTML = years.map(y => `<option${taken.has(y) ? ' disabled' : ''}>${y}</option>`).join('');
+      document.getElementById('costYear').value = item ? item.year : years.find(y => !taken.has(y)) || now;
+    }
+    document.getElementById('costTypeField').hidden = !run;
+    document.getElementById('costRunType').innerHTML = costTypesFor(h).map(t => `<option>${escapeHtml(t)}</option>`).join('');
+    if (run) document.getElementById('costRunType').value = item && costTypesFor(h).includes(item.type) ? item.type : costTypesFor(h)[0];
+    document.getElementById('costLabelText').textContent = run || rentMode ? 'Note (optional)' : 'What for';
+    const labelInput = document.getElementById('costLabel');
+    labelInput.required = !run && !rentMode;
+    labelInput.placeholder = rentMode ? 'e.g. Tenant: Mehta, ₹22,000 a month' : run ? 'e.g. Bathroom leak fixed' : 'e.g. Stamp duty';
+    document.getElementById('costLabels').innerHTML = run || rentMode ? '' : (BUY_COST_LABELS[h.type] || BUY_COST_LABELS.other).map(l => `<option value="${escapeHtml(l)}"></option>`).join('');
+    labelInput.value = item ? (rentMode ? item.note : item.label) || '' : run || rentMode || list.length ? '' : (BUY_COST_LABELS[h.type] || BUY_COST_LABELS.other)[0];
     document.getElementById('costAmount').value = item ? item.amount : '';
-    document.getElementById('costDate').value = item ? item.date || '' : h.purchaseDate || '';
+    document.getElementById('costDate').value = item ? item.date || '' : run ? '' : h.purchaseDate || '';
     document.getElementById('costDelete').style.display = item ? '' : 'none';
     openModal('costModal');
-    setTimeout(() => document.getElementById(item ? 'costAmount' : 'costLabel').focus(), 50);
+    setTimeout(() => document.getElementById(item || run || rentMode ? 'costAmount' : 'costLabel').focus(), 50);
   }
 
   document.getElementById('costForm').addEventListener('submit', ev => {
     ev.preventDefault();
-    const { h, item } = costEdit;
+    const { h, item, mode } = costEdit;
+    const run = mode === 'run', rentMode = mode === 'rent';
     const label = document.getElementById('costLabel').value.trim();
     const amount = evalAmount(document.getElementById('costAmount').value.replace(/,/g, ''));
-    if (!label) return;
+    if (!label && !run && !rentMode) return;
     if (!(amount > 0)) return showMessage('Type the amount, e.g. 150000.');
-    const data = { label, amount, date: document.getElementById('costDate').value };
-    h.buyCosts = h.buyCosts || [];
-    if (item) Object.assign(item, data); else h.buyCosts.push({ id: newId(), ...data });
+    const data = rentMode ? { year: Number(document.getElementById('costYear').value), amount, note: label }
+      : { label, amount, date: document.getElementById('costDate').value };
+    if (run) data.type = document.getElementById('costRunType').value;
+    const key = rentMode ? 'rentEntries' : run ? 'runCosts' : 'buyCosts';
+    h[key] = h[key] || [];
+    if (item) Object.assign(item, data); else h[key].push({ id: newId(), ...data });
     saveHoldings();
     closeModal('costModal');
     render();
@@ -5747,13 +5816,14 @@
   });
 
   document.getElementById('costDelete').addEventListener('click', () => {
-    const { h, item } = costEdit;
-    const at = h.buyCosts.indexOf(item);
-    h.buyCosts.splice(at, 1);
+    const { h, item, mode } = costEdit;
+    const list = mode === 'rent' ? h.rentEntries : mode === 'run' ? h.runCosts : h.buyCosts;
+    const at = list.indexOf(item);
+    list.splice(at, 1);
     saveHoldings();
     closeModal('costModal');
     render();
-    toast(`${item.label} removed`, { action: { label: 'Undo', run: () => { h.buyCosts.splice(at, 0, item); saveHoldings(); render(); } } });
+    toast(`${mode === 'rent' ? `Rent for ${item.year}` : item.label || item.type} removed`, { action: { label: 'Undo', run: () => { list.splice(at, 0, item); saveHoldings(); render(); } } });
   });
 
   // Add a running cost: the normal expense form, already pointed at this property
@@ -5778,6 +5848,13 @@
     if (a === 'edit') return openHoldingForm(null, h.id);
     if (a === 'add-cost') return openCostForm(h);
     if (a === 'add-maint') return addPropertyCost(h);
+    if (a === 'add-past') return openCostForm(h, null, 'run');
+    if (a === 'add-rent') return openCostForm(h, null, 'rent');
+    if (a === 'rent-toggle') {
+      h.rentInCost = act.checked;
+      saveHoldings();
+      return render();
+    }
     if (a === 'edit-loan') return openHoldingForm(null, act.dataset.loan);
     if (a === 'add-loan') {
       openHoldingForm('liability');
@@ -5788,6 +5865,10 @@
     }
     const cost = ev.target.closest('[data-cost]');
     if (cost) return openCostForm(h, cost.dataset.cost);
+    const past = ev.target.closest('[data-runcost]');
+    if (past) return openCostForm(h, past.dataset.runcost, 'run');
+    const rentRow = ev.target.closest('[data-rent]');
+    if (rentRow) return openCostForm(h, rentRow.dataset.rent, 'rent');
     const exp = ev.target.closest('[data-exp]');
     if (exp) openEdit(exp.dataset.exp);
   });
