@@ -351,6 +351,11 @@
   .h-row .amt small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
   .h-row .amt small.pos { color: var(--income); }
   .h-row .amt small.neg { color: var(--danger-ink); }
+  .alloc-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); margin: 0 !important; color: var(--text) !important; font-size: 14px !important; }
+  .alloc-row:last-child { border-bottom: none; }
+  .alloc-row span { flex: 1; min-width: 0; }
+  .alloc-row small { display: block; font-size: 12px; color: var(--muted); }
+  .alloc-row input { width: 110px; padding: 8px 10px; text-align: right; }
   .pl-box { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--bg); }
   .pl-box .plan-row span:first-child { color: var(--muted); }
   .pl-note { margin-top: 4px; font-size: 12px; color: var(--muted); }
@@ -5157,14 +5162,17 @@
   const HOLDING_KINDS = {
     account:    { title: 'Bank accounts', one: 'bank account', icon: '🏦' },
     investment: { title: 'Investments', one: 'investment', icon: '📈' },
-    asset:      { title: 'Assets', one: 'asset', icon: '🏠' },
+    asset:      { title: 'Property & vehicles', one: 'property or vehicle', icon: '🏠' },
+    gold:       { title: 'Gold & jewellery', one: 'gold or jewellery', icon: '💍' },
     liability:  { title: 'Loans & liabilities', one: 'loan', icon: '💳' },
     insurance:  { title: 'Insurance', one: 'policy', icon: '🛡️' },
     goal:       { title: 'Goals', one: 'goal', icon: '🎯' },
   };
   const INVEST_TYPES = ['Liquid fund', 'Flexi cap fund', 'Large cap fund', 'Mid cap fund', 'Small cap fund', 'Index fund',
     'ELSS (tax saver)', 'Debt fund', 'Stocks', 'Fixed deposit', 'PPF', 'EPF', 'NPS', 'Gold (digital / ETF)', 'Other'];
-  const ASSET_TYPES = ['Home', 'Land / plot', 'Gold & jewellery', 'Vehicle', 'Other'];
+  const ASSET_TYPES = ['Home', 'Land / plot', 'Vehicle', 'Other'];
+  const GOLD_TYPES = ['Jewellery', 'Coins / bars', 'Other'];
+  const GOLD_PURITY = ['24K', '22K', '18K', 'Other'];
   const LOAN_TYPES = ['Home loan', 'Car loan', 'Personal loan', 'Education loan', 'Credit card', 'Gold loan', 'Other'];
   const INSURANCE_TYPES = ['Term life', 'Health', 'Vehicle', 'Home', 'Life (endowment / ULIP)', 'Other'];
 
@@ -5200,6 +5208,14 @@
       { key: 'rentSince', label: 'Rented out since', type: 'date', home: true, rent: true },
       { key: 'rentCategory', label: 'Or count actual rent income from', type: 'category', catType: 'income', home: true, rent: true },
     ],
+    gold: [
+      { key: 'name', label: 'Name', placeholder: 'e.g. Wedding jewellery, Gold coins', required: true },
+      { key: 'type', label: 'Type', type: 'select', options: GOLD_TYPES },
+      { key: 'weight', label: 'Weight in grams (optional)', type: 'number', placeholder: 'e.g. 50' },
+      { key: 'purity', label: 'Purity', type: 'select', options: GOLD_PURITY },
+      { key: 'value', label: 'Current value (estimate)', type: 'money', value: true, hint: 'Weight × today’s gold rate, roughly.' },
+      { key: 'cost', label: 'What you paid (optional)', type: 'money' },
+    ],
     liability: [
       { key: 'name', label: 'Name', placeholder: 'e.g. SBI Home loan', required: true },
       { key: 'type', label: 'Type', type: 'select', options: LOAN_TYPES },
@@ -5223,8 +5239,8 @@
       { key: 'name', label: 'Goal', placeholder: 'e.g. Car, Emergency fund, Europe trip', required: true },
       { key: 'target', label: 'Amount needed', type: 'money', required: true },
       { key: 'date', label: 'Target date (optional)', type: 'date' },
-      { key: 'links', label: 'Saved in', type: 'holdings', kinds: ['account', 'investment', 'asset'],
-        hint: 'Pick the accounts or investments set aside for this goal; their value counts towards it.' },
+      { key: 'alloc', label: 'Money set aside for it', type: 'alloc', kinds: ['account', 'investment', 'gold', 'asset'],
+        hint: 'For each one, type the share that’s for this goal: a percentage (50%) or an amount (1,00,000). The same fund can be shared between goals.' },
     ],
   };
 
@@ -5233,6 +5249,13 @@
   // Once: earlier versions only counted money added after a value was typed in by when the expense was
   // created, so expenses linked later never reached the value. Count them from when the value was typed.
   function migrateHoldingLinks() {
+    // Gold used to be an asset type; now it has its own section
+    let movedGold = false;
+    holdings.forEach(h => {
+      if (h.kind === 'asset' && h.type === 'Gold & jewellery') { h.kind = 'gold'; h.type = /coin|bar|biscuit/i.test(h.name) ? 'Coins / bars' : 'Jewellery'; movedGold = true; }
+      if (h.kind === 'goal' && h.links && !h.alloc) { h.alloc = Object.fromEntries(h.links.map(id => [id, '100%'])); delete h.links; movedGold = true; }
+    });
+    if (movedGold) saveHoldings();
     const KEY = 'moneyManager.linksFixed.v1';
     if (localStorage.getItem(KEY)) return;
     let changed = false;
@@ -5249,7 +5272,7 @@
   // The holding an expense goes into (investment, asset or loan), if any
   function investedIn(e) {
     const h = typeOf(e) === 'expense' && e.toHolding && findHolding(e.toHolding);
-    return h && ['investment', 'asset', 'liability'].includes(h.kind) ? h : null;
+    return h && ['investment', 'asset', 'gold', 'liability'].includes(h.kind) ? h : null;
   }
 
   // Linked after the holding's value was last typed in, so not part of that number yet
@@ -5274,7 +5297,7 @@
       const added = sumAmounts(holdingPayments(h, true));
       return { value: round2(num(h.value) + added), invested: round2(num(h.invested) + added) };
     }
-    if (h.kind === 'asset') {
+    if (h.kind === 'asset' || h.kind === 'gold') {
       // What you paid (a home: with stamp duty etc.) plus money added since, against what it's worth
       const added = sumAmounts(holdingPayments(h, true));
       const base = num(h.cost) + (h.type === 'Home' ? num(h.otherCosts) : 0);
@@ -5291,8 +5314,27 @@
     return { value: 0 };
   }
 
+  // A goal's share of each holding: '50%' (grows with it) or an amount (fixed)
+  function goalAllocs(g, alloc = g.alloc) {
+    const a = alloc || Object.fromEntries((g.links || []).map(id => [id, '100%']));
+    return Object.entries(a).map(([id, raw]) => ({ h: findHolding(id), raw })).filter(x => x.h);
+  }
+  const isPct = raw => /%\s*$/.test(String(raw));
+  // Fraction of the holding this allocation takes (0–1+)
+  function allocFraction(x) {
+    if (isPct(x.raw)) return (parseFloat(x.raw) || 0) / 100;
+    const v = holdingNow(x.h).value;
+    return v > 0 ? (Number(x.raw) || 0) / v : 0;
+  }
+  const allocValue = x => round2(holdingNow(x.h).value * Math.min(1, allocFraction(x)));
+  // How much of a holding all goals together have set aside (except one goal, while editing it)
+  function allocatedShare(h, exceptGoal) {
+    return holdings.filter(g => g.kind === 'goal' && g !== exceptGoal)
+      .reduce((t, g) => t + goalAllocs(g).filter(x => x.h === h).reduce((s, x) => s + allocFraction(x), 0), 0);
+  }
+
   function goalProgress(g) {
-    const saved = round2((g.links || []).reduce((t, id) => { const h = findHolding(id); return t + (h ? holdingNow(h).value : 0); }, 0));
+    const saved = round2(goalAllocs(g).reduce((t, x) => t + allocValue(x), 0));
     const target = Number(g.target) || 0;
     const left = Math.max(0, target - saved);
     let perMonth = 0;
@@ -5402,7 +5444,8 @@
     // Each goal: what's left, per month to make the date, minus SIPs already flowing into its funds
     const goals = holdings.filter(h => h.kind === 'goal').map(g => {
       const p = goalProgress(g);
-      const sipIn = round2((g.links || []).reduce((t, id) => { const h = findHolding(id); return t + (h && h.kind === 'investment' ? Number(h.sip) || 0 : 0); }, 0));
+      // A percentage of a fund also gets that share of its SIP
+      const sipIn = Math.round(goalAllocs(g).reduce((t, x) => t + (x.h.kind === 'investment' && isPct(x.raw) ? (Number(x.h.sip) || 0) * Math.min(1, allocFraction(x)) : 0), 0));
       const need = p.perMonth ? Math.max(0, Math.ceil(p.perMonth - sipIn)) : 0;
       return { g, ...p, sipIn, need };
     });
@@ -5459,8 +5502,8 @@
 
   function netWorth() {
     const sum = kinds => round2(holdings.filter(h => kinds.includes(h.kind)).reduce((t, h) => t + holdingNow(h).value, 0));
-    const parts = { account: sum(['account']), investment: sum(['investment']), asset: sum(['asset']) };
-    const own = round2(parts.account + parts.investment + parts.asset), owe = sum(['liability']);
+    const parts = { account: sum(['account']), investment: sum(['investment']), asset: sum(['asset']), gold: sum(['gold']) };
+    const own = round2(parts.account + parts.investment + parts.asset + parts.gold), owe = sum(['liability']);
     return { own, owe, net: round2(own - owe), parts };
   }
 
@@ -5480,7 +5523,7 @@
     sel.innerHTML = entryType === 'income'
       ? '<option value="">— Not tracked —</option>' + holdingOptions('account', '🏦 Bank accounts')
       : '<option value="">— Nothing: a normal expense —</option>' + holdingOptions('investment', '📈 Investments') +
-        holdingOptions('asset', '🏠 Assets') + holdingOptions('liability', '💳 Loans (EMI / prepayment)');
+        holdingOptions('asset', '🏠 Property & vehicles') + holdingOptions('gold', '💍 Gold & jewellery') + holdingOptions('liability', '💳 Loans (EMI / prepayment)');
     const h = findHolding(selected);
     sel.value = h && (entryType === 'income') === (h.kind === 'account') ? selected : '';
     showHoldingField();
@@ -5510,7 +5553,7 @@
 
   function showHoldingField() {
     const income = entryType === 'income';
-    const any = income ? holdings.some(h => h.kind === 'account') : holdings.some(h => ['investment', 'asset', 'liability'].includes(h.kind));
+    const any = income ? holdings.some(h => h.kind === 'account') : holdings.some(h => ['investment', 'asset', 'gold', 'liability'].includes(h.kind));
     const sel = document.getElementById('toHolding');
     document.getElementById('holdingField').hidden = !any || (!income && split.on);
     document.getElementById('paidFromField').hidden = income || split.on || !holdings.some(h => h.kind === 'account');
@@ -5536,7 +5579,7 @@
   }
 
   // Put in vs worth now, for investments and for assets with what you paid; skipped = assets without it
-  function investedVsWorth(kinds = ['investment', 'asset']) {
+  function investedVsWorth(kinds = ['investment', 'asset', 'gold']) {
     let put = 0, worth = 0, skipped = 0;
     holdings.filter(h => kinds.includes(h.kind)).forEach(h => {
       const now = holdingNow(h);
@@ -5564,6 +5607,9 @@
       const owed = loans.reduce((t, l) => t + holdingNow(l).value, 0);
       sub = [h.type, now.cost ? `paid ${formatMoney(now.cost)}` : '', loans.length ? `loan ${formatMoney(owed)} · yours ${formatMoney(now.value - owed)}` : ''].filter(Boolean).join(' · ');
       amt = formatMoney(now.value) + plHtml(now.value, now.cost);
+    } else if (h.kind === 'gold') {
+      sub = [h.type, h.purity && h.purity !== 'Other' ? h.purity : '', Number(h.weight) ? `${h.weight} g` : '', now.cost ? `paid ${formatMoney(now.cost)}` : ''].filter(Boolean).join(' · ');
+      amt = formatMoney(now.value) + plHtml(now.value, now.cost);
     } else if (h.kind === 'liability') {
       const paid = Number(h.original) ? Math.min(100, Math.max(0, (1 - now.value / h.original) * 100)) : null;
       const ls = loanStats(h);
@@ -5578,6 +5624,8 @@
     } else if (h.kind === 'goal') {
       const g = goalProgress(h);
       sub = [`${formatMoney(g.saved)} of ${formatMoney(g.target)}`, h.date ? `by ${fmtDate(h.date)}` : '', g.perMonth ? `save ${formatMoney(g.perMonth)}/mo` : g.left ? '' : 'reached 🎉'].filter(Boolean).join(' · ');
+      const from = goalAllocs(h).map(x => `${x.h.name} ${isPct(x.raw) ? x.raw : formatMoney(Number(x.raw))}`);
+      if (from.length) sub += `<br>from ${escapeHtml(from.join(', '))}`;
       amt = `${g.pct.toFixed(0)}%`;
       return `
         <div class="h-row" data-holding="${escapeHtml(h.id)}">
@@ -5586,6 +5634,8 @@
           <div class="amt">${amt}</div>
         </div>`;
     }
+    const forGoals = ['account', 'investment', 'gold', 'asset'].includes(h.kind) ? allocatedShare(h) : 0;
+    if (forGoals > 0.0001) sub += `${sub ? ' · ' : ''}${Math.min(100, Math.round(forGoals * 100))}% set aside for goals`;
     return `
       <div class="h-row" data-holding="${escapeHtml(h.id)}">
         <div class="info"><div class="name">${escapeHtml(h.name)}${h.salary ? '<span class="salary-badge">⭐ Salary</span>' : ''}</div>
@@ -5600,7 +5650,7 @@
     const monthStart = todayISO().slice(0, 8) + '01';
     const thisMonth = sumAmounts(expenses.filter(e => e.date >= monthStart && e.date <= todayISO() && typeOf(e) === 'expense' && investedIn(e)));
     // What you own, as one bar: part of the whole, in fixed colours
-    const parts = [['account', 'Bank', 'var(--p1)'], ['investment', 'Investments', 'var(--p3)'], ['asset', 'Assets', 'var(--p4)']]
+    const parts = [['account', 'Bank', 'var(--p1)'], ['investment', 'Investments', 'var(--p3)'], ['asset', 'Property', 'var(--p2)'], ['gold', 'Gold', 'var(--p4)']]
       .map(([k, label, color]) => ({ label, color, value: nw.parts[k] })).filter(x => x.value > 0);
     const bar = nw.own > 0 ? `
       <div class="alloc-bar" role="img" aria-label="What you own: ${parts.map(x => `${x.label} ${formatMoney(x.value)}`).join(', ')}">
@@ -5609,9 +5659,9 @@
     const section = kind => {
       const list = holdings.filter(h => h.kind === kind).sort((a, b) => (b.salary ? 1 : 0) - (a.salary ? 1 : 0) || holdingNow(b).value - holdingNow(a).value || a.name.localeCompare(b.name));
       const k = HOLDING_KINDS[kind];
-      const total = ['account', 'investment', 'asset', 'liability'].includes(kind) && list.length
+      const total = ['account', 'investment', 'asset', 'gold', 'liability'].includes(kind) && list.length
         ? `<span class="h-section-total">${formatMoney(list.reduce((t, h) => t + holdingNow(h).value, 0))}</span>` : '';
-      const pl = (kind === 'investment' || kind === 'asset') && list.length ? investedVsWorth([kind]) : null;
+      const pl = ['investment', 'asset', 'gold'].includes(kind) && list.length ? investedVsWorth([kind]) : null;
       const plLine = pl && pl.put ? `<div class="section-pl">Put in ${formatMoney(pl.put)} · now ${formatMoney(pl.worth)} ·
         <span class="${pl.gain >= 0 ? 'pos-ink' : 'neg-ink'}">${pl.gain >= 0 ? '+' : '−'}${formatMoney(Math.abs(pl.gain))} (${pl.gain >= 0 ? '' : '−'}${Math.abs(pl.gain / pl.put * 100).toFixed(1)}%)</span></div>` : '';
       return `
@@ -5636,10 +5686,10 @@
           if (!t.put) return '';
           const row = (label, v, cls = '') => `<div class="plan-row ${cls}"><span>${label}</span><span>${v}</span></div>`;
           return `<div class="pl-box">
-            ${row('Total invested (investments &amp; assets)', formatMoney(t.put))}
+            ${row('Total invested (investments, property &amp; gold)', formatMoney(t.put))}
             ${row('Worth now', formatMoney(t.worth))}
             ${row(t.gain >= 0 ? 'Profit' : 'Loss', `<span class="${t.gain >= 0 ? 'pos-ink' : 'neg-ink'}">${t.gain >= 0 ? '+' : '−'}${formatMoney(Math.abs(t.gain))} (${t.gain >= 0 ? '' : '−'}${Math.abs(t.gain / t.put * 100).toFixed(1)}%)</span>`, 'sum')}
-            ${t.skipped ? `<div class="pl-note">${t.skipped} asset${t.skipped === 1 ? '' : 's'} without “What you paid” ${t.skipped === 1 ? 'isn’t' : 'aren’t'} included.</div>` : ''}
+            ${t.skipped ? `<div class="pl-note">${t.skipped} item${t.skipped === 1 ? '' : 's'} without “What you paid” ${t.skipped === 1 ? 'isn’t' : 'aren’t'} included.</div>` : ''}
           </div>`;
         })()}
         ${holdings.length ? '' : '<p class="hint" style="text-align:center">Add your bank accounts, investments, assets and loans below to see your net worth. Then, when adding an expense like a SIP or an EMI, pick what it “Goes into”.</p>'}
@@ -5650,6 +5700,7 @@
       ${section('investment')}
       ${section('asset')}
       ${holdings.filter(h => h.kind === 'asset' && h.type === 'Home').map(homeCostHtml).join('')}
+      ${section('gold')}
       ${section('liability')}
       ${section('insurance')}`;
   }
@@ -5710,6 +5761,18 @@
         return `<label for="${id}">${escapeHtml(f.label)}</label><select id="${id}"><option value="">— None —</option>${opts.map(x =>
           `<option value="${escapeHtml(x.id)}"${h && h[f.key] === x.id ? ' selected' : ''}>${escapeHtml(x.name)}</option>`).join('')}</select>${hint}`;
       }
+      if (f.type === 'alloc') {
+        const opts = f.kinds.flatMap(k => holdings.filter(x => x.kind === k));
+        const mine = Object.fromEntries(h ? goalAllocs(h).map(x => [x.h.id, x.raw]) : []);
+        return `<label>${escapeHtml(f.label)}</label>${hint}<div id="${id}">${opts.length ? opts.map(x => {
+          const free = Math.max(0, 1 - allocatedShare(x, h));
+          const raw = mine[x.id];
+          return `<label class="alloc-row"><span>${HOLDING_KINDS[x.kind].icon} ${escapeHtml(x.name)}
+              <small>${formatMoney(holdingNow(x).value)} · ${free >= 0.9999 ? 'not set aside yet' : `${Math.round(free * 100)}% free`}</small></span>
+            <input type="text" data-alloc="${escapeHtml(x.id)}" placeholder="—" autocomplete="off" value="${raw === undefined ? '' : escapeHtml(isPct(raw) ? raw : String(raw))}"
+              aria-label="Share of ${escapeHtml(x.name)} for this goal"></label>`;
+        }).join('') : '<p class="hint" style="margin:0">Add bank accounts or investments first, then set money aside here.</p>'}</div>`;
+      }
       if (f.type === 'holdings') {
         const opts = holdings.filter(x => f.kinds.includes(x.kind));
         const on = new Set(h ? h[f.key] || [] : []);
@@ -5748,6 +5811,28 @@
       const el = document.getElementById('hf_' + f.key);
       if (f.type === 'checkbox') data[f.key] = el.checked;
       else if (f.type === 'holdings') data[f.key] = [...el.querySelectorAll('input:checked')].map(i => i.value);
+      else if (f.type === 'alloc') {
+        // '50%' or an amount; nothing = not for this goal. Never more than 100% of anything across goals.
+        const alloc = {};
+        for (const input of el.querySelectorAll('[data-alloc]')) {
+          const text = input.value.trim().replace(/,/g, '');
+          if (!text) continue;
+          const x = findHolding(input.dataset.alloc);
+          let raw;
+          if (/^\d+(\.\d+)?\s*%$/.test(text)) raw = parseFloat(text) + '%';
+          else {
+            const v = evalAmount(text);
+            if (!(v > 0)) return showMessage(`For ${x.name}, type a percentage like 50% or an amount like 100000.`);
+            raw = v;
+          }
+          const total = allocatedShare(x, h) + allocFraction({ h: x, raw });
+          if (total > 1.0001) {
+            return showMessage(`That's ${Math.round(total * 100)}% of ${x.name} set aside across your goals. It can't be more than 100%; lower this or another goal's share.`);
+          }
+          if (Number(raw) > 0) alloc[x.id] = raw; else if (parseFloat(raw) > 0) alloc[x.id] = raw;
+        }
+        data[f.key] = alloc;
+      }
       else if (f.type === 'category') data[f.key] = el.value;
       else if (f.type === 'money' || f.type === 'number') {
         const text = el.value.trim();
@@ -5776,6 +5861,7 @@
     // Only one salary account
     if (kind === 'account' && data.salary) holdings.forEach(x => { if (x !== target && x.kind === 'account' && x.salary) x.salary = false; });
     Object.assign(target, data);
+    if (kind === 'goal') delete target.links; // replaced by allocations
     saveHoldings();
     closeModal('holdingModal');
     render();
