@@ -328,6 +328,40 @@
   /* Bigger tap targets for small ✕ buttons */
   .chip button { min-width: 32px; min-height: 30px; }
   .txn-close { width: 36px; height: 36px; }
+  /* Wealth tab */
+  .nw-total { text-align: center; }
+  .nw-total .lbl { font-size: 13px; color: var(--muted); }
+  .nw-total .val { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .nw-total .val.neg { color: var(--danger-ink); }
+  .nw-split { display: flex; gap: 8px; margin-top: 12px; }
+  .nw-split > div { flex: 1; padding: 10px; border-radius: 12px; background: var(--bg); text-align: center; }
+  .nw-split .lbl { font-size: 12px; color: var(--muted); }
+  .nw-split .val { margin-top: 2px; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .alloc-bar { display: flex; gap: 2px; height: 12px; margin: 14px 0 8px; border-radius: 6px; overflow: hidden; }
+  .alloc-bar span { display: block; height: 100%; }
+  .alloc-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
+  .alloc-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .alloc-legend b { color: var(--text); font-weight: 600; }
+  .h-row { display: flex; align-items: center; gap: 12px; padding: 11px 2px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .h-row:last-of-type { border-bottom: none; }
+  .h-row .info { flex: 1; min-width: 0; }
+  .h-row .name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .h-row .sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .h-row .amt { text-align: right; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .h-row .amt small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
+  .h-row .amt small.pos { color: var(--income); }
+  .h-row .amt small.neg { color: var(--danger-ink); }
+  .h-section-total { font-size: 13px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .h-row .sub.wrap { white-space: normal; }
+  .goal-bar { height: 8px; margin-top: 6px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+  .goal-bar span { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
+  .salary-badge { font-size: 11px; font-weight: 600; color: var(--accent-ink); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 10px; padding: 1px 7px; margin-left: 6px; vertical-align: 1px; }
+  .due-soon { color: var(--danger-ink); font-weight: 600; }
+  .h-fields .split-toggle { margin-top: 14px; }
+  .h-links { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  .h-links label { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--text); }
+  .h-links input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  .invest-tag { color: var(--accent-ink); white-space: nowrap; }
   /* Toast: short message at the bottom, sometimes with an Undo */
   .toast {
     position: fixed; left: 50%; bottom: 92px; z-index: 70;
@@ -921,11 +955,13 @@
   <div class="stats">
     <div class="stat"><span class="stat-label">Income</span><span class="stat-value" id="monthIncome"></span></div>
     <div class="stat"><span class="stat-label">Expenses</span><span class="stat-value" id="monthExpense"></span></div>
+    <div class="stat" id="investedStat" hidden><span class="stat-label">Invested</span><span class="stat-value" id="monthInvested"></span></div>
   </div>
   <nav class="tabs">
     <button class="tab" data-tab="expenses">Transactions</button>
     <button class="tab" data-tab="charts">Charts</button>
     <button class="tab" data-tab="split">Split</button>
+    <button class="tab" data-tab="wealth">Wealth</button>
   </nav>
 </header>
 
@@ -946,6 +982,10 @@
       <h2>Spending by category</h2>
       <div id="expenseBreakdown"></div>
     </div>
+    <div class="card" id="investCard">
+      <h2>Invested &amp; loan payments</h2>
+      <div id="investBreakdown"></div>
+    </div>
     <div id="expenseList"></div>
   </section>
 
@@ -963,6 +1003,10 @@
 
   <section id="splitView" hidden>
     <div id="splitContent"></div>
+  </section>
+
+  <section id="wealthView" hidden>
+    <div id="wealthContent"></div>
   </section>
 </main>
 
@@ -1038,6 +1082,11 @@
       <div id="detailField" hidden>
         <label for="detail">Spent on (optional)</label>
         <select id="detail"></select>
+      </div>
+      <div id="holdingField" hidden>
+        <label for="toHolding">Goes into (optional)</label>
+        <select id="toHolding"></select>
+        <p class="hint" id="holdingHint" style="margin-top:4px"></p>
       </div>
       <label for="note">Note (optional)</label>
       <input type="text" id="note" placeholder="e.g. Lunch with friends">
@@ -1138,6 +1187,21 @@
       <button type="button" class="btn secondary" id="scanCancel">Cancel</button>
       <button type="button" class="btn primary" id="scanUse" disabled>Use this split</button>
     </div>
+  </div>
+</div>
+
+<!-- Add / edit something in the Wealth tab (account, investment, asset, loan, insurance, goal) -->
+<div class="modal-bg" id="holdingModal" onclick="if (event.target === this) closeModal('holdingModal')">
+  <div class="modal">
+    <h3 id="holdingTitle">Add</h3>
+    <form id="holdingForm">
+      <div class="h-fields" id="holdingFields"></div>
+      <div class="btn-row">
+        <button type="button" class="btn danger" id="holdingDelete" style="display:none">Delete</button>
+        <button type="button" class="btn secondary" onclick="closeModal('holdingModal')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -1435,12 +1499,13 @@
   // Change tracking, so two devices can merge their data (see Sync): every entry/category gets
   // updatedAt when it changes, and deletions are remembered so deleted items don't come back.
   const DELETED_KEY = 'moneyManager.deleted.v1';
-  let deleted = { entries: {}, categories: {}, settlements: {}, groups: {} }; // entry / settlement / group id, lowercase category name -> deletedAt (ms)
+  let deleted = { entries: {}, categories: {}, settlements: {}, groups: {}, holdings: {} }; // entry / settlement / group / holding id, lowercase category name -> deletedAt (ms)
   try { Object.assign(deleted, JSON.parse(localStorage.getItem(DELETED_KEY))); } catch {}
   let savedEntries = new Map();    // id -> entry as last saved, to spot what changed
   let savedCategories = new Map(); // lowercase name -> category as last saved
   let savedSettlements = new Map(); // id -> settlement as last saved
   let savedGroups = new Map();      // id -> group as last saved
+  let savedHoldings = new Map();    // id -> holding as last saved
 
   const SYNC_KEY = 'moneyManager.sync.v1';
   // When sync is on: GitHub { provider: 'github', owner, repo, token, path, lastSync }
@@ -1462,6 +1527,11 @@
   let groups = [];
   try { groups = JSON.parse(localStorage.getItem(GROUPS_KEY)) || []; } catch {}
   savedGroups = snapshotMap(groups, entryKey);
+  // Wealth: bank accounts, investments, assets, loans, insurance and goals (see "Wealth")
+  const HOLDINGS_KEY = 'moneyManager.holdings.v1';
+  let holdings = [];
+  try { holdings = JSON.parse(localStorage.getItem(HOLDINGS_KEY)) || []; } catch {}
+  savedHoldings = snapshotMap(holdings, entryKey);
   let expenses = loadExpenses();
   savedEntries = snapshotMap(expenses, entryKey);
   let categories = []; // [{ name, type: 'expense'|'income', icon, color, subs: [string], detailsOn, details: [string], updatedAt }]
@@ -1523,6 +1593,7 @@
     localStorage.setItem(CAT_STORAGE_KEY, JSON.stringify(categories));
     localStorage.setItem(SETTLE_KEY, JSON.stringify(settlements));
     localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
+    localStorage.setItem(HOLDINGS_KEY, JSON.stringify(holdings));
     localStorage.setItem(DELETED_KEY, JSON.stringify(deleted));
   }
 
@@ -1534,6 +1605,12 @@
 
   function saveGroups() {
     savedGroups = trackChanges(groups, savedGroups, entryKey, deleted.groups);
+    persistData();
+    scheduleSync();
+  }
+
+  function saveHoldings() {
+    savedHoldings = trackChanges(holdings, savedHoldings, entryKey, deleted.holdings);
     persistData();
     scheduleSync();
   }
@@ -2110,13 +2187,19 @@
     document.getElementById('nextMonth').classList.toggle('nav-hidden', period.kind !== 'month');
 
     const monthIncome = monthExpenses.filter(e => typeOf(e) === 'income');
-    const monthSpend = monthExpenses.filter(e => typeOf(e) === 'expense');
+    // Money put into investments, assets or loans is "Invested", not spent
+    const monthSpend = monthExpenses.filter(e => typeOf(e) === 'expense' && !investedIn(e));
+    const monthInvest = monthExpenses.filter(e => typeOf(e) === 'expense' && investedIn(e));
     const incomeTotal = sumAmounts(monthIncome);
     const spendTotal = sumAmounts(monthSpend);
+    const investTotal = sumAmounts(monthInvest);
     const hidden = incomeHidden();
     const balanceEl = document.getElementById('monthBalance');
-    balanceEl.textContent = hidden ? HIDDEN : formatSigned(incomeTotal - spendTotal);
-    balanceEl.classList.toggle('negative', !hidden && incomeTotal - spendTotal < 0);
+    const left = incomeTotal - spendTotal - investTotal;
+    balanceEl.textContent = hidden ? HIDDEN : formatSigned(left);
+    balanceEl.classList.toggle('negative', !hidden && left < 0);
+    document.getElementById('investedStat').hidden = !investTotal && !holdings.some(h => h.kind !== 'goal');
+    document.getElementById('monthInvested').textContent = formatMoney(investTotal);
     const incomeEl = document.getElementById('monthIncome');
     incomeEl.textContent = incomeMoney(incomeTotal);
     balanceEl.classList.toggle('masked', hidden);
@@ -2131,6 +2214,11 @@
     document.getElementById('expensesView').hidden = ui.tab !== 'expenses';
     document.getElementById('chartsView').hidden = ui.tab !== 'charts';
     document.getElementById('splitView').hidden = ui.tab !== 'split';
+    document.getElementById('wealthView').hidden = ui.tab !== 'wealth';
+    if (ui.tab === 'wealth') {
+      renderWealthTab();
+      return;
+    }
     if (ui.tab === 'split') {
       renderSplitTab();
       return;
@@ -2142,6 +2230,7 @@
 
     renderBreakdown('incomeCard', 'incomeBreakdown', monthIncome, incomeMoney);
     renderBreakdown('expenseCard', 'expenseBreakdown', monthSpend, formatMoney);
+    renderBreakdown('investCard', 'investBreakdown', monthInvest, formatMoney);
 
     // While searching, results replace the category summaries at the top
     const words = searchWords();
@@ -2152,6 +2241,7 @@
     if (words.length) {
       document.getElementById('incomeCard').style.display = 'none';
       document.getElementById('expenseCard').style.display = 'none';
+      document.getElementById('investCard').style.display = 'none';
       const inSum = sumAmounts(shown.filter(e => typeOf(e) === 'income'));
       const outSum = sumAmounts(shown.filter(e => typeOf(e) === 'expense'));
       summary.innerHTML = `<span>${shown.length} result${shown.length === 1 ? '' : 's'}</span><span>` +
@@ -2203,7 +2293,8 @@
                 <div class="title">${mark(e.note || detailOf(e) || e.subcategory || e.category)}${e.bill ? ' <span title="Has a bill photo">🧾</span>' : ''}</div>
                 <div class="cat">${[e.category, e.subcategory, detailOf(e)].filter(Boolean).map(mark).join(' › ')}${e.split
                   ? ` · <span class="split-tag">👥 your share of ${formatMoney(e.split.total)}</span>` : ''}${e.shared
-                  ? ` · <span class="split-tag">☁️ ${sharedEntryTag(e)}</span>` : ''}</div>
+                  ? ` · <span class="split-tag">☁️ ${sharedEntryTag(e)}</span>` : ''}${investedIn(e)
+                  ? ` · <span class="invest-tag">📈 into ${escapeHtml(investedIn(e).name)}</span>` : ''}</div>
               </div>
               ${typeOf(e) === 'income'
                 ? `<div class="amount income">+${incomeMoney(e.amount)}</div>`
@@ -2976,8 +3067,9 @@
     document.querySelectorAll('#entryTypeToggle button')
       .forEach(b => b.classList.toggle('active', b.dataset.type === type));
     document.getElementById('expenseModalTitle').textContent = (editingId ? 'Edit ' : 'Add ') + type;
-    // Only spending can be split
+    // Only spending can be split, or go into an investment / asset / loan
     document.getElementById('splitField').hidden = type !== 'expense';
+    fillHoldingOptions(document.getElementById('toHolding').value);
     renderSplit();
     if (!category) {
       const ofType = categories.filter(c => typeOf(c) === type);
@@ -3073,13 +3165,15 @@
     document.getElementById('date').value = todayISO();
     split = newSplit();
     resetBillForm(null);
+    fillHoldingOptions('');
     setEntryType('expense');
     updateCalc();
     document.getElementById('deleteBtn').style.display = 'none';
     document.getElementById('saveAnother').hidden = false;
     renderDateChips();
     openModal('expenseModal');
-    setTimeout(() => document.getElementById('amount').focus(), 50);
+    // Straight to the amount, unless you've already started on another field
+    setTimeout(() => { if (!document.getElementById('expenseForm').contains(document.activeElement)) amountInput.focus(); }, 50);
   }
 
   function openEdit(id) {
@@ -3094,6 +3188,7 @@
     editingId = id;
     split = splitFromEntry(e);
     resetBillForm(e);
+    fillHoldingOptions(e.toHolding || '');
     document.getElementById('amount').value = e.split ? e.split.total : e.amount;
     updateCalc();
     setEntryType(typeOf(e), e.category, e.subcategory || '', e.detail || '');
@@ -3179,10 +3274,13 @@
     if (detail || (editing && editing.detail)) data.detail = detail;
     const bill = commitBillForm(editing && editing.bill);
     if (bill) data.bill = bill;
+    const toHolding = entryType === 'expense' && !data.split && document.getElementById('toHolding').value;
+    if (toHolding) data.toHolding = toHolding;
     if (editing) {
       Object.assign(editing, data);
       if (!data.split) delete editing.split;
       if (!bill) delete editing.bill;
+      if (!toHolding) delete editing.toHolding;
     } else if (editingId) {
       // Deleted on another device while this form was open: saving brings it back
       expenses.push({ id: editingId, createdAt: Date.now(), ...data });
@@ -3337,6 +3435,7 @@
   function renderSplit(full = true) {
     // Bill photos are for your own expenses; a shared group's bill doesn't take one (yet)
     document.getElementById('billField').hidden = !!(split.on && split.cloud);
+    showHoldingField();
     document.getElementById('splitOn').checked = split.on;
     document.getElementById('splitBox').hidden = !split.on;
     document.getElementById('amountLabel').textContent = split.on && entryType === 'expense' ? 'Total bill' : 'Amount';
@@ -5009,6 +5108,359 @@
     toast('Payment deleted for everyone in the group', { action: { label: 'Undo', run: () => mark(false) } });
   }
 
+  // ---------- Wealth ----------
+  // Everything you own and owe, and what you're saving for, in one place. holdings:
+  //   { id, kind, name, createdAt, updatedAt, ...fields for the kind (see HOLDING_KINDS) }
+  // Values you type (balance, current value, outstanding) are a snapshot at valueAt; money you add
+  // later from an expense ("Goes into") is counted on top, so you only need to update now and then.
+  // Loans: a payment reduces what's outstanding by its principal part, worked out from the interest rate.
+
+  const HOLDING_KINDS = {
+    account:    { title: 'Bank accounts', one: 'bank account', icon: '🏦' },
+    investment: { title: 'Investments', one: 'investment', icon: '📈' },
+    asset:      { title: 'Assets', one: 'asset', icon: '🏠' },
+    liability:  { title: 'Loans & liabilities', one: 'loan', icon: '💳' },
+    insurance:  { title: 'Insurance', one: 'policy', icon: '🛡️' },
+    goal:       { title: 'Goals', one: 'goal', icon: '🎯' },
+  };
+  const INVEST_TYPES = ['Liquid fund', 'Flexi cap fund', 'Large cap fund', 'Mid cap fund', 'Small cap fund', 'Index fund',
+    'ELSS (tax saver)', 'Debt fund', 'Stocks', 'Fixed deposit', 'PPF', 'EPF', 'NPS', 'Gold (digital / ETF)', 'Other'];
+  const ASSET_TYPES = ['Home', 'Land / plot', 'Gold & jewellery', 'Vehicle', 'Other'];
+  const LOAN_TYPES = ['Home loan', 'Car loan', 'Personal loan', 'Education loan', 'Credit card', 'Gold loan', 'Other'];
+  const INSURANCE_TYPES = ['Term life', 'Health', 'Vehicle', 'Home', 'Life (endowment / ULIP)', 'Other'];
+
+  // Form fields per kind. money = amount (calculations allowed); value: true = the snapshot field
+  const HOLDING_FIELDS = {
+    account: [
+      { key: 'name', label: 'Account name', placeholder: 'e.g. HDFC Savings', required: true },
+      { key: 'bank', label: 'Bank (optional)', placeholder: 'e.g. HDFC Bank' },
+      { key: 'balance', label: 'Balance now', type: 'money', value: true },
+      { key: 'salary', label: '⭐ This is my salary account', type: 'checkbox' },
+    ],
+    investment: [
+      { key: 'name', label: 'Name', placeholder: 'e.g. Parag Parikh Flexi Cap', required: true },
+      { key: 'type', label: 'Type', type: 'select', options: INVEST_TYPES },
+      { key: 'platform', label: 'Held on (optional)', placeholder: 'e.g. Groww', list: ['Groww', 'Zerodha / Coin', 'Kuvera', 'Paytm Money', 'ET Money', 'Bank'] },
+      { key: 'invested', label: 'Invested so far', type: 'money', hint: 'Total you had put in before tracking it here. New money from expenses is added on top.' },
+      { key: 'value', label: 'Current value', type: 'money', value: true, hint: 'Copy it from Groww (or your app) now and then.' },
+      { key: 'sip', label: 'Monthly SIP (optional)', type: 'money' },
+    ],
+    asset: [
+      { key: 'name', label: 'Name', placeholder: 'e.g. Our flat, Gold coins', required: true },
+      { key: 'type', label: 'Type', type: 'select', options: ASSET_TYPES },
+      { key: 'value', label: 'Current value (estimate)', type: 'money', value: true },
+      { key: 'cost', label: 'What you paid (optional)', type: 'money' },
+    ],
+    liability: [
+      { key: 'name', label: 'Name', placeholder: 'e.g. SBI Home loan', required: true },
+      { key: 'type', label: 'Type', type: 'select', options: LOAN_TYPES },
+      { key: 'outstanding', label: 'Amount outstanding now', type: 'money', value: true, hint: 'From your latest loan statement.' },
+      { key: 'emi', label: 'EMI per month (optional)', type: 'money' },
+      { key: 'rate', label: 'Interest rate % per year (optional)', type: 'number', placeholder: 'e.g. 8.5', hint: 'Lets the app work out how much of each payment reduces the loan.' },
+      { key: 'original', label: 'Original loan amount (optional)', type: 'money' },
+      { key: 'endDate', label: 'Last EMI date (optional)', type: 'date' },
+      { key: 'assetId', label: 'Loan for (optional)', type: 'holding', kinds: ['asset'] },
+    ],
+    insurance: [
+      { key: 'name', label: 'Policy name', placeholder: 'e.g. HDFC Click 2 Protect', required: true },
+      { key: 'type', label: 'Type', type: 'select', options: INSURANCE_TYPES },
+      { key: 'provider', label: 'Insurer (optional)', placeholder: 'e.g. HDFC Life' },
+      { key: 'cover', label: 'Cover amount', type: 'money' },
+      { key: 'premium', label: 'Premium per year', type: 'money' },
+      { key: 'renewal', label: 'Next renewal / premium date', type: 'date' },
+    ],
+    goal: [
+      { key: 'name', label: 'Goal', placeholder: 'e.g. Car, Emergency fund, Europe trip', required: true },
+      { key: 'target', label: 'Amount needed', type: 'money', required: true },
+      { key: 'date', label: 'Target date (optional)', type: 'date' },
+      { key: 'links', label: 'Saved in', type: 'holdings', kinds: ['account', 'investment', 'asset'],
+        hint: 'Pick the accounts or investments set aside for this goal; their value counts towards it.' },
+    ],
+  };
+
+  const findHolding = id => (id ? holdings.find(h => h.id === id) : null);
+
+  // The holding an expense goes into (investment, asset or loan), if any
+  function investedIn(e) {
+    const h = e.toHolding && findHolding(e.toHolding);
+    return h && ['investment', 'asset', 'liability'].includes(h.kind) ? h : null;
+  }
+
+  // Expenses going into this holding; after = only those added since its value was typed in
+  function holdingPayments(h, after) {
+    return expenses.filter(e => e.toHolding === h.id && typeOf(e) === 'expense' && (!after || (e.createdAt || 0) > (h.valueAt || 0)));
+  }
+
+  // { value (what it's worth / owed now), invested (investments: total put in) }
+  function holdingNow(h) {
+    const num = v => Number(v) || 0;
+    if (h.kind === 'account') return { value: num(h.balance) };
+    if (h.kind === 'investment') {
+      const added = sumAmounts(holdingPayments(h, true));
+      return { value: round2(num(h.value) + added), invested: round2(num(h.invested) + sumAmounts(holdingPayments(h, false))) };
+    }
+    if (h.kind === 'asset') return { value: round2(num(h.value) + sumAmounts(holdingPayments(h, true))) };
+    if (h.kind === 'liability') {
+      let bal = num(h.outstanding);
+      const rate = num(h.rate) / 1200;
+      holdingPayments(h, true).sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
+        bal -= Math.max(0, e.amount - bal * rate); // interest first, the rest pays the loan down
+      });
+      return { value: round2(Math.max(0, bal)) };
+    }
+    return { value: 0 };
+  }
+
+  function goalProgress(g) {
+    const saved = round2((g.links || []).reduce((t, id) => { const h = findHolding(id); return t + (h ? holdingNow(h).value : 0); }, 0));
+    const target = Number(g.target) || 0;
+    const left = Math.max(0, target - saved);
+    let perMonth = 0;
+    if (g.date && left) {
+      const now = new Date(), end = new Date(g.date + 'T00:00:00');
+      const months = Math.max(1, (end.getFullYear() - now.getFullYear()) * 12 + end.getMonth() - now.getMonth());
+      perMonth = Math.ceil(left / months);
+    }
+    return { saved, target, left, pct: target ? Math.min(100, saved / target * 100) : 0, perMonth };
+  }
+
+  function netWorth() {
+    const sum = kinds => round2(holdings.filter(h => kinds.includes(h.kind)).reduce((t, h) => t + holdingNow(h).value, 0));
+    const parts = { account: sum(['account']), investment: sum(['investment']), asset: sum(['asset']) };
+    const own = round2(parts.account + parts.investment + parts.asset), owe = sum(['liability']);
+    return { own, owe, net: round2(own - owe), parts };
+  }
+
+  // ---- Expense form: "Goes into" ----
+
+  function fillHoldingOptions(selected) {
+    const sel = document.getElementById('toHolding');
+    const pick = kind => holdings.filter(h => h.kind === kind).sort((a, b) => a.name.localeCompare(b.name));
+    const group = (kind, label) => {
+      const list = pick(kind);
+      return list.length ? `<optgroup label="${label}">${list.map(h => `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`).join('')}</optgroup>` : '';
+    };
+    sel.innerHTML = '<option value="">— Nothing: a normal expense —</option>' +
+      group('investment', '📈 Investments') + group('asset', '🏠 Assets') + group('liability', '💳 Loans (EMI / prepayment)');
+    sel.value = findHolding(selected) ? selected : '';
+    showHoldingField();
+  }
+
+  function showHoldingField() {
+    const any = holdings.some(h => ['investment', 'asset', 'liability'].includes(h.kind));
+    const sel = document.getElementById('toHolding');
+    document.getElementById('holdingField').hidden = !any || entryType !== 'expense' || split.on || (!sel.value && !any);
+    const h = findHolding(sel.value);
+    document.getElementById('holdingHint').textContent = !h ? 'For SIPs, gold, a loan EMI…: counts as Invested, not spent.'
+      : h.kind === 'liability' ? `Reduces what's left on ${h.name}${Number(h.rate) ? ' (the interest part is worked out from its rate)' : ''}. Counts as Invested, not spent.`
+      : `Adds to ${h.name}. Counts as Invested, not spent.`;
+  }
+  document.getElementById('toHolding').addEventListener('change', showHoldingField);
+
+  // ---- Wealth tab ----
+
+  const daysUntil = d => Math.round((new Date(d + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 864e5);
+
+  function holdingRowHtml(h) {
+    const now = holdingNow(h);
+    let sub = '', amt = '';
+    if (h.kind === 'account') {
+      sub = [h.bank, h.valueAt ? 'updated ' + new Date(h.valueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''].filter(Boolean).join(' · ');
+      amt = formatMoney(now.value);
+    } else if (h.kind === 'investment') {
+      const gain = round2(now.value - now.invested);
+      sub = [h.type, h.platform, Number(h.sip) ? `SIP ${formatMoney(h.sip)}/mo` : ''].filter(Boolean).join(' · ');
+      amt = `${formatMoney(now.value)}${now.invested ? `<small class="${gain >= 0 ? 'pos' : 'neg'}">${gain >= 0 ? '+' : '−'}${formatMoney(Math.abs(gain))} (${gain >= 0 ? '' : '−'}${Math.abs(gain / now.invested * 100).toFixed(1)}%)</small>` : ''}`;
+    } else if (h.kind === 'asset') {
+      const loans = holdings.filter(l => l.kind === 'liability' && l.assetId === h.id);
+      const owed = loans.reduce((t, l) => t + holdingNow(l).value, 0);
+      sub = [h.type, loans.length ? `loan ${formatMoney(owed)} · yours ${formatMoney(now.value - owed)}` : ''].filter(Boolean).join(' · ');
+      amt = formatMoney(now.value);
+    } else if (h.kind === 'liability') {
+      const paid = Number(h.original) ? Math.min(100, Math.max(0, (1 - now.value / h.original) * 100)) : null;
+      sub = [h.type, Number(h.emi) ? `EMI ${formatMoney(h.emi)}` : '', Number(h.rate) ? `${h.rate}%` : '', paid !== null ? `${paid.toFixed(0)}% paid off` : ''].filter(Boolean).join(' · ');
+      amt = formatMoney(now.value);
+    } else if (h.kind === 'insurance') {
+      const due = h.renewal ? daysUntil(h.renewal) : null;
+      sub = [h.type, Number(h.cover) ? `cover ${formatMoney(h.cover)}` : '',
+        due !== null ? (due < 0 ? `<span class="due-soon">renewal was ${fmtDate(h.renewal)}</span>` : due <= 30 ? `<span class="due-soon">renews in ${due} day${due === 1 ? '' : 's'}</span>` : `renews ${fmtDate(h.renewal)}`) : ''].filter(Boolean).join(' · ');
+      amt = Number(h.premium) ? `${formatMoney(h.premium)}<small>per year</small>` : '';
+    } else if (h.kind === 'goal') {
+      const g = goalProgress(h);
+      sub = [`${formatMoney(g.saved)} of ${formatMoney(g.target)}`, h.date ? `by ${fmtDate(h.date)}` : '', g.perMonth ? `save ${formatMoney(g.perMonth)}/mo` : g.left ? '' : 'reached 🎉'].filter(Boolean).join(' · ');
+      amt = `${g.pct.toFixed(0)}%`;
+      return `
+        <div class="h-row" data-holding="${escapeHtml(h.id)}">
+          <div class="info"><div class="name">${escapeHtml(h.name)}</div><div class="sub wrap">${sub}</div>
+            <div class="goal-bar"><span style="width:${g.pct}%"></span></div></div>
+          <div class="amt">${amt}</div>
+        </div>`;
+    }
+    return `
+      <div class="h-row" data-holding="${escapeHtml(h.id)}">
+        <div class="info"><div class="name">${escapeHtml(h.name)}${h.salary ? '<span class="salary-badge">⭐ Salary</span>' : ''}</div>
+          <div class="sub">${sub}</div></div>
+        <div class="amt">${amt}</div>
+      </div>`;
+  }
+
+  function renderWealthTab() {
+    const el = document.getElementById('wealthContent');
+    const nw = netWorth();
+    const monthStart = todayISO().slice(0, 8) + '01';
+    const thisMonth = sumAmounts(expenses.filter(e => e.date >= monthStart && e.date <= todayISO() && typeOf(e) === 'expense' && investedIn(e)));
+    // What you own, as one bar: part of the whole, in fixed colours
+    const parts = [['account', 'Bank', 'var(--p1)'], ['investment', 'Investments', 'var(--p3)'], ['asset', 'Assets', 'var(--p4)']]
+      .map(([k, label, color]) => ({ label, color, value: nw.parts[k] })).filter(x => x.value > 0);
+    const bar = nw.own > 0 ? `
+      <div class="alloc-bar" role="img" aria-label="What you own: ${parts.map(x => `${x.label} ${formatMoney(x.value)}`).join(', ')}">
+        ${parts.map(x => `<span style="width:${x.value / nw.own * 100}%;background:${x.color}" title="${x.label}: ${formatMoney(x.value)}"></span>`).join('')}</div>
+      <div class="alloc-legend">${parts.map(x => `<span><i style="background:${x.color}"></i>${x.label} <b>${(x.value / nw.own * 100).toFixed(0)}%</b> · ${formatMoney(x.value)}</span>`).join('')}</div>` : '';
+    const section = kind => {
+      const list = holdings.filter(h => h.kind === kind).sort((a, b) => (b.salary ? 1 : 0) - (a.salary ? 1 : 0) || holdingNow(b).value - holdingNow(a).value || a.name.localeCompare(b.name));
+      const k = HOLDING_KINDS[kind];
+      const total = ['account', 'investment', 'asset', 'liability'].includes(kind) && list.length
+        ? `<span class="h-section-total">${formatMoney(list.reduce((t, h) => t + holdingNow(h).value, 0))}</span>` : '';
+      return `
+        <div class="card">
+          <div class="card-head"><h2>${k.icon} ${k.title}</h2>${total}</div>
+          ${list.map(holdingRowHtml).join('')}
+          <button class="link-btn" data-add-holding="${kind}" style="margin-top:4px">＋ Add ${k.one}</button>
+        </div>`;
+    };
+    el.innerHTML = `
+      <div class="card">
+        <div class="nw-total"><div class="lbl">Net worth</div><div class="val${nw.net < 0 ? ' neg' : ''}">${nw.net < 0 ? '−' : ''}${formatMoney(Math.abs(nw.net))}</div></div>
+        <div class="nw-split">
+          <div><div class="lbl">You own</div><div class="val">${formatMoney(nw.own)}</div></div>
+          <div><div class="lbl">You owe</div><div class="val">${formatMoney(nw.owe)}</div></div>
+          <div><div class="lbl">Invested in ${new Date().toLocaleDateString('en-IN', { month: 'short' })}</div><div class="val">${formatMoney(thisMonth)}</div></div>
+        </div>
+        ${bar}
+        ${holdings.length ? '' : '<p class="hint" style="text-align:center">Add your bank accounts, investments, assets and loans below to see your net worth. Then, when adding an expense like a SIP or an EMI, pick what it “Goes into”.</p>'}
+      </div>
+      ${section('goal')}
+      ${section('account')}
+      ${section('investment')}
+      ${section('asset')}
+      ${section('liability')}
+      ${section('insurance')}`;
+  }
+
+  document.getElementById('wealthContent').addEventListener('click', ev => {
+    const add = ev.target.closest('[data-add-holding]');
+    if (add) return openHoldingForm(add.dataset.addHolding);
+    const row = ev.target.closest('[data-holding]');
+    if (row) openHoldingForm(null, row.dataset.holding);
+  });
+
+  // ---- Add / edit form ----
+
+  let holdingEdit = null; // { kind, h (existing or null), shown: value shown for the snapshot field }
+
+  function openHoldingForm(kind, id) {
+    const h = findHolding(id);
+    kind = h ? h.kind : kind;
+    const fields = HOLDING_FIELDS[kind];
+    const now = h ? holdingNow(h) : { value: 0 };
+    holdingEdit = { kind, h, shown: now.value };
+    const k = HOLDING_KINDS[kind];
+    document.getElementById('holdingTitle').textContent = (h ? 'Edit ' : 'Add ') + k.one;
+    const val = f => {
+      if (!h) return '';
+      if (f.value) return now.value || '';
+      const v = h[f.key];
+      return v === undefined || v === null ? '' : v;
+    };
+    document.getElementById('holdingFields').innerHTML = fields.map(f => {
+      const id = 'hf_' + f.key;
+      const hint = f.hint ? `<p class="hint" style="margin-top:4px">${escapeHtml(f.hint)}</p>` : '';
+      if (f.type === 'checkbox') {
+        return `<label class="split-toggle"><input type="checkbox" id="${id}"${h && h[f.key] ? ' checked' : ''}> ${escapeHtml(f.label)}</label>${hint}`;
+      }
+      if (f.type === 'select') {
+        return `<label for="${id}">${escapeHtml(f.label)}</label><select id="${id}">${f.options.map(o =>
+          `<option${(h ? h[f.key] : f.options[0]) === o ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>${hint}`;
+      }
+      if (f.type === 'holding') {
+        const opts = holdings.filter(x => f.kinds.includes(x.kind));
+        return `<label for="${id}">${escapeHtml(f.label)}</label><select id="${id}"><option value="">— None —</option>${opts.map(x =>
+          `<option value="${escapeHtml(x.id)}"${h && h[f.key] === x.id ? ' selected' : ''}>${escapeHtml(x.name)}</option>`).join('')}</select>${hint}`;
+      }
+      if (f.type === 'holdings') {
+        const opts = holdings.filter(x => f.kinds.includes(x.kind));
+        const on = new Set(h ? h[f.key] || [] : []);
+        return `<label>${escapeHtml(f.label)}</label>${hint}<div class="h-links" id="${id}">${opts.length ? opts.map(x =>
+          `<label><input type="checkbox" value="${escapeHtml(x.id)}"${on.has(x.id) ? ' checked' : ''}> ${HOLDING_KINDS[x.kind].icon} ${escapeHtml(x.name)} · ${formatMoney(holdingNow(x).value)}</label>`).join('')
+          : '<p class="hint" style="margin:0">Add bank accounts or investments first, then link them here.</p>'}</div>`;
+      }
+      const type = f.type === 'date' ? 'date' : 'text';
+      const mode = f.type === 'money' || f.type === 'number' ? ' inputmode="decimal"' : '';
+      const list = f.list ? ` list="${id}_list"` : '';
+      return `<label for="${id}">${escapeHtml(f.label)}</label>
+        <input type="${type}" id="${id}"${mode}${list} autocomplete="off" placeholder="${escapeHtml(f.placeholder || (f.type === 'money' ? '0' : ''))}"
+          value="${escapeHtml(String(val(f)))}"${f.required && f.type !== 'money' ? ' required' : ''}>
+        ${f.list ? `<datalist id="${id}_list">${f.list.map(o => `<option value="${escapeHtml(o)}"></option>`).join('')}</datalist>` : ''}${hint}`;
+    }).join('');
+    document.getElementById('holdingDelete').style.display = h ? '' : 'none';
+    openModal('holdingModal');
+    if (!h) setTimeout(() => document.getElementById('hf_name').focus(), 50);
+  }
+
+  document.getElementById('holdingForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const { kind, h, shown } = holdingEdit;
+    const data = {};
+    for (const f of HOLDING_FIELDS[kind]) {
+      const el = document.getElementById('hf_' + f.key);
+      if (f.type === 'checkbox') data[f.key] = el.checked;
+      else if (f.type === 'holdings') data[f.key] = [...el.querySelectorAll('input:checked')].map(i => i.value);
+      else if (f.type === 'money' || f.type === 'number') {
+        const text = el.value.trim();
+        const v = text ? evalAmount(text) : 0;
+        if (v === null || v < 0) return showMessage(`“${f.label}” should be a number.`);
+        if (f.required && !(v > 0)) return showMessage(`Please enter “${f.label}”.`);
+        data[f.key] = v;
+      } else data[f.key] = el.value.trim();
+    }
+    if (!data.name) return;
+    // The snapshot only moves if you changed it (otherwise money added since keeps counting on top)
+    const vf = HOLDING_FIELDS[kind].find(f => f.value);
+    let target = h;
+    if (!target) {
+      target = { id: newId(), kind, createdAt: Date.now() };
+      holdings.push(target);
+    }
+    if (vf) {
+      if (!h || round2(data[vf.key]) !== round2(shown)) {
+        target.valueAt = Date.now();
+        target.history = [...(target.history || []), { date: todayISO(), value: data[vf.key] }].slice(-60);
+      } else {
+        data[vf.key] = h[vf.key];
+      }
+    }
+    // Only one salary account
+    if (kind === 'account' && data.salary) holdings.forEach(x => { if (x !== target && x.kind === 'account' && x.salary) x.salary = false; });
+    Object.assign(target, data);
+    saveHoldings();
+    closeModal('holdingModal');
+    render();
+    toast(h ? 'Saved' : `${HOLDING_KINDS[kind].one[0].toUpperCase() + HOLDING_KINDS[kind].one.slice(1)} added`);
+  });
+
+  document.getElementById('holdingDelete').addEventListener('click', () => {
+    const { h } = holdingEdit;
+    if (!h) return;
+    const linked = expenses.filter(e => e.toHolding === h.id).length;
+    holdings = holdings.filter(x => x !== h);
+    saveHoldings();
+    closeModal('holdingModal');
+    render();
+    toast(`${h.name} deleted${linked ? `. ${linked === 1 ? 'Its linked payment now counts as an expense' : `Its ${linked} linked payments now count as expenses`}` : ''}`, {
+      action: { label: 'Undo', run: () => { holdings.push(h); saveHoldings(); render(); } },
+    });
+  });
+
   // ---------- Simplify debts ----------
   // Per group, like Splitwise: instead of everyone paying back whoever paid each bill, work out each
   // person's net (what they're owed minus what they owe) and settle it in as few payments as possible.
@@ -6376,7 +6828,7 @@ If the photo is not a bill or receipt, set "readable" to false.`;
   // ---------- Backup ----------
 
   function exportData() {
-    const blob = new Blob([JSON.stringify({ version: 2, expenses, categories, settlements, groups }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 2, expenses, categories, settlements, groups, holdings }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'money-manager-backup-' + todayISO() + '.json';
@@ -6410,6 +6862,12 @@ If the photo is not a bill or receipt, set "readable" to false.`;
           groups.push(...parsed.groups.filter(g => g && g.id && !have.has(g.id) && !deleted.groups[g.id] &&
             typeof g.name === 'string' && Array.isArray(g.members)));
           saveGroups();
+        }
+        if (Array.isArray(parsed.holdings)) {
+          const have = new Set(holdings.map(h => h.id));
+          holdings.push(...parsed.holdings.filter(h => h && h.id && !have.has(h.id) && !deleted.holdings[h.id] &&
+            HOLDING_KINDS[h.kind] && typeof h.name === 'string'));
+          saveHoldings();
         }
 
         if (Array.isArray(parsed.categories)) {
@@ -6481,6 +6939,7 @@ If the photo is not a bill or receipt, set "readable" to false.`;
         categories: mergeDeleted(deleted.categories, rd.categories),
         settlements: mergeDeleted(deleted.settlements, rd.settlements),
         groups: mergeDeleted(deleted.groups, rd.groups),
+        holdings: mergeDeleted(deleted.holdings, rd.holdings),
       };
       const remoteEntries = (Array.isArray(remote.expenses) ? remote.expenses : []).filter(e => e && e.id);
       const remoteCats = (Array.isArray(remote.categories) ? remote.categories : []).filter(c => c && typeof c.name === 'string');
@@ -6493,6 +6952,9 @@ If the photo is not a bill or receipt, set "readable" to false.`;
       const remoteGroups = (Array.isArray(remote.groups) ? remote.groups : []).filter(g => g && g.id);
       groups = mergeLists(groups, remoteGroups, entryKey, deleted.groups);
       savedGroups = snapshotMap(groups, entryKey);
+      const remoteHoldings = (Array.isArray(remote.holdings) ? remote.holdings : []).filter(h => h && h.id);
+      holdings = mergeLists(holdings, remoteHoldings, entryKey, deleted.holdings);
+      savedHoldings = snapshotMap(holdings, entryKey);
       savedCategories = snapshotMap(categories, categoryKey);
       // Two devices may have picked the same colour for different new categories
       if (normalizeCategoryColors()) savedCategories = trackChanges(categories, savedCategories, categoryKey, deleted.categories);
@@ -6500,7 +6962,7 @@ If the photo is not a bill or receipt, set "readable" to false.`;
       render();
       if (document.getElementById('categoriesModal').classList.contains('open')) renderCategoryManager();
     }
-    return { version: 3, expenses, categories, settlements, groups, deleted };
+    return { version: 3, expenses, categories, settlements, groups, holdings, deleted };
   }
 
   async function syncNow() {
