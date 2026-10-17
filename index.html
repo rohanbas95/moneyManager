@@ -5877,9 +5877,14 @@
 
   // ---- Goal plan: what you can save each month, and how it covers your goals ----
   // Uses the last 3 full months: average income and spending, regular bills, plus SIPs, EMIs and insurance.
+  // Which months the plan is based on: '3m' = last 3 full months (default), 'last' = last month, 'this' = this month so far
+  const PLAN_PERIODS = [['3m', 'Last 3 months'], ['last', 'Last month'], ['this', 'This month']];
+  const planPeriod = () => (PLAN_PERIODS.some(([k]) => k === ui.goalPlanPeriod) ? ui.goalPlanPeriod : '3m');
+
   function goalPlan() {
     const now = new Date();
-    const keys = [1, 2, 3].map(i => { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+    const back = { '3m': [1, 2, 3], last: [1], this: [0] }[planPeriod()];
+    const keys = back.map(i => { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
     const inMonth = (e, k) => e.date.startsWith(k);
     const used = keys.filter(k => expenses.some(e => inMonth(e, k)));
     const n = used.length || 1;
@@ -5930,8 +5935,18 @@
     if (!plan.goals.length) return '';
     const monthName = k => new Date(k + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'short' });
     const row = (label, v, cls = '') => `<div class="plan-row ${cls}"><span>${label}</span><span>${v}</span></div>`;
-    if (!plan.income) return `<div class="card"><h2>🧭 Goal plan</h2><p class="hint" style="margin-top:0">Add your salary (as income) for a month or two and the app will work out how much you can save for each goal.</p></div>`;
-    const period = plan.months.length ? plan.months.slice().reverse().map(monthName).join(', ') : 'this month';
+    const which = planPeriod();
+    const toggle = `<div class="segmented" style="margin:0 0 10px">${PLAN_PERIODS.map(([k, label]) =>
+      `<button type="button" data-plan-period="${k}" class="${k === which ? 'active' : ''}">${label}</button>`).join('')}</div>`;
+    const thisMonth = new Date().toLocaleDateString('en-IN', { month: 'long' });
+    if (!plan.income) {
+      return `<div class="card"><h2>🧭 Goal plan</h2>${toggle}<p class="hint" style="margin-top:0">${which === 'this' ? `No income recorded for ${thisMonth} yet.`
+        : which === 'last' ? 'No income recorded for last month.' : 'No income recorded in the last 3 months.'}
+        Add your salary as income and the app will work out how much you can save for each goal.</p></div>`;
+    }
+    const names = plan.months.slice().reverse().map(monthName).join(', ');
+    const basis = which === 'this' ? `Based on ${thisMonth} so far. The month isn’t over, so spending may still go up.`
+      : which === 'last' ? `Based on ${names || 'last month'}.` : `Average of ${names || 'the last 3 months'}.`;
     const fmtMonth = d => d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
     const goals = plan.goals.map(x => {
       const name = escapeHtml(x.g.name);
@@ -5953,7 +5968,8 @@
     return `
       <div class="card">
         <h2>🧭 Goal plan</h2>
-        <p class="hint" style="margin-top:0">Average of ${period}.</p>
+        ${toggle}
+        <p class="hint" style="margin-top:0">${basis}</p>
         ${row('Income', formatMoney(plan.income))}
         ${row('Day-to-day spending', '−' + formatMoney(plan.spend))}
         ${plan.regular.slice(0, 4).map(r => row('↳ ' + escapeHtml(r.name) + ' (every month)', formatMoney(r.amount), 'sub')).join('')}
@@ -6214,6 +6230,12 @@
   }
 
   document.getElementById('wealthContent').addEventListener('click', ev => {
+    const period = ev.target.closest('[data-plan-period]');
+    if (period) {
+      ui.goalPlanPeriod = period.dataset.planPeriod;
+      saveUi();
+      return render();
+    }
     const add = ev.target.closest('[data-add-holding]');
     if (add) return openHoldingForm(add.dataset.addHolding);
     const row = ev.target.closest('[data-holding]');
