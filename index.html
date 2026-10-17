@@ -6161,7 +6161,7 @@
     const bar = nw.own > 0 ? `
       <div class="alloc-bar" role="img" aria-label="What you own: ${parts.map(x => `${x.label} ${formatMoney(x.value)}`).join(', ')}">
         ${parts.map(x => `<span style="width:${x.value / nw.own * 100}%;background:${x.color}" title="${x.label}: ${formatMoney(x.value)}"></span>`).join('')}</div>
-      <div class="alloc-legend">${parts.map(x => `<span><i style="background:${x.color}"></i>${x.label} <b>${(x.value / nw.own * 100).toFixed(0)}%</b> · ${formatMoney(x.value)}</span>`).join('')}</div>` : '';
+      <div class="alloc-legend">${parts.map(x => `<span><i style="background:${x.color}"></i>${x.label} <b>${x.value / nw.own < 0.005 ? '&lt;1' : (x.value / nw.own * 100).toFixed(0)}%</b> · ${formatMoney(x.value)}</span>`).join('')}</div>` : '';
     const section = kind => {
       const list = holdings.filter(h => h.kind === kind).sort((a, b) => (b.salary ? 1 : 0) - (a.salary ? 1 : 0) || holdingNow(b).value - holdingNow(a).value || a.name.localeCompare(b.name));
       const k = HOLDING_KINDS[kind];
@@ -6191,12 +6191,14 @@
           const t = investedVsWorth();
           if (!t.put) return '';
           const row = (label, v, cls = '') => `<div class="plan-row ${cls}"><span>${label}</span><span>${v}</span></div>`;
-          return `<div class="pl-box">
-            ${row('Total invested (investments, property &amp; gold)', formatMoney(t.put))}
+          return `<div class="pl-box" aria-label="Profit or loss on investments, property and gold">
+            <div class="plan-row" style="font-weight:600"><span style="color:var(--text)">Investments, property &amp; gold</span><span></span></div>
+            ${row('What you put in', formatMoney(t.put))}
             ${holdings.some(h => h.kind === 'asset' && putInto(h)) ? '<div class="pl-note" style="margin:-2px 0 4px">Property counts its full cost of owning so far: buying costs, loan interest and maintenance (minus rent, if counted).</div>' : ''}
-            ${row('Worth now', formatMoney(t.worth))}
+            ${row('What they’re worth now', formatMoney(t.worth))}
             ${row(t.gain >= 0 ? 'Profit' : 'Loss', `<span class="${t.gain >= 0 ? 'pos-ink' : 'neg-ink'}">${t.gain >= 0 ? '+' : '−'}${formatMoney(Math.abs(t.gain))} (${t.gain >= 0 ? '' : '−'}${Math.abs(t.gain / t.put * 100).toFixed(1)}%)</span>`, 'sum')}
             ${t.skipped ? `<div class="pl-note">${t.skipped} item${t.skipped === 1 ? '' : 's'} without a purchase cost (“What you paid”, or buying costs for property) ${t.skipped === 1 ? 'isn’t' : 'aren’t'} included.</div>` : ''}
+            <div class="pl-note">Bank balances aren’t investments, so they count in “You own” but not here.</div>
           </div>`;
         })()}
         ${holdings.length ? '' : '<p class="hint" style="text-align:center">Add your bank accounts, investments, assets and loans below to see your net worth. Then, when adding an expense like a SIP or an EMI, pick what it “Goes into”.</p>'}
