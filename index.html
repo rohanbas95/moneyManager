@@ -361,6 +361,10 @@
   .cost-row.static { cursor: default; }
   .type-bar { display: flex; height: 8px; gap: 2px; border-radius: 4px; overflow: hidden; margin: 6px 0 10px; }
   .type-bar span { display: block; height: 100%; }
+  .loan-part { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .loan-part h4 { margin: 0 0 4px; font-size: 13px; color: var(--text); }
+  .loan-saved { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--income) 12%, transparent); font-size: 14px; line-height: 1.5; }
+  .loan-saved b { color: var(--income); }
   .loan-box { padding: 12px; border-radius: 12px; background: var(--bg); margin-top: 10px; }
   .loan-box h3 { margin: 0 0 6px; font-size: 14px; }
   .sched { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -5270,12 +5274,17 @@
     liability: [
       { key: 'name', label: 'Name', placeholder: 'e.g. SBI Home loan', required: true },
       { key: 'type', label: 'Type', type: 'select', options: LOAN_TYPES },
-      { key: 'outstanding', label: 'Amount outstanding now', type: 'money', value: true, hint: 'From your latest loan statement.' },
-      { key: 'emi', label: 'EMI per month (optional)', type: 'money' },
+      { key: 'original', label: 'Loan amount taken (optional)', type: 'money' },
       { key: 'rate', label: 'Interest rate % per year (optional)', type: 'number', placeholder: 'e.g. 8.5', hint: 'Lets the app work out how much of each payment reduces the loan.' },
-      { key: 'original', label: 'Original loan amount (optional)', type: 'money' },
-      { key: 'startDate', label: 'First EMI date (optional)', type: 'date', hint: 'With the original amount and EMI, lets the app work out interest paid so far.' },
-      { key: 'endDate', label: 'Last EMI date (optional)', type: 'date' },
+      { key: 'tenure', label: 'Tenure in years, as agreed (optional)', type: 'number', placeholder: 'e.g. 30',
+        hint: 'With the amount, rate and first EMI date, shows what the loan would have cost with no prepayments.' },
+      { key: 'startDate', label: 'First EMI date (optional)', type: 'date' },
+      { key: 'emi', label: 'EMI per month now (optional)', type: 'money', hint: 'Leave empty to use the EMI worked out from the tenure.' },
+      { key: 'outstanding', label: 'Principal outstanding now', type: 'money', value: true, hint: 'From your latest loan statement.' },
+      { key: 'interestPaid', label: 'Interest actually paid so far (optional)', type: 'money',
+        hint: 'From your bank’s interest certificate or statement: the most accurate way to see what prepaying saved.' },
+      { key: 'prepaid', label: 'Or: total prepayments made so far (optional)', type: 'money',
+        hint: 'Extra payments on top of EMIs. Used to estimate the interest paid if you leave the box above empty.' },
       { key: 'assetId', label: 'Loan for (optional)', type: 'holding', kinds: ['asset'] },
     ],
     insurance: [
@@ -5363,12 +5372,14 @@
       return { value: round2(num(h.value) + added), cost: base ? round2(base + added) : 0 };
     }
     if (h.kind === 'liability') {
-      let bal = num(h.outstanding);
+      let bal = num(h.outstanding), interest = 0;
       const rate = num(h.rate) / 1200;
       holdingPayments(h, true).sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
-        bal -= Math.max(0, e.amount - bal * rate); // interest first, the rest pays the loan down
+        const it = Math.min(e.amount, bal * rate); // interest first, the rest pays the loan down
+        interest += it;
+        bal -= e.amount - it;
       });
-      return { value: round2(Math.max(0, bal)) };
+      return { value: round2(Math.max(0, bal)), interestSince: round2(interest) };
     }
     return { value: 0 };
   }
@@ -5420,33 +5431,80 @@
     return { months, interest: Math.round(interest) }; // a projection: whole rupees
   }
 
+  // EMIs due so far, counting from the first EMI date
+  function emisSoFar(l) {
+    if (!l.startDate) return 0;
+    const start = new Date(l.startDate + 'T00:00:00'), now = new Date();
+    return Math.max(0, (now.getFullYear() - start.getFullYear()) * 12 + now.getMonth() - start.getMonth() + (now.getDate() >= start.getDate() ? 1 : 0));
+  }
+
+  // The loan exactly as agreed (amount, rate, tenure), with no prepayments
+  function loanPlan(l) {
+    const P = Number(l.original) || 0, r = (Number(l.rate) || 0) / 1200, n = Math.round((Number(l.tenure) || 0) * 12);
+    if (!P || !n || !l.startDate) return null;
+    const emi = Math.round(r ? P * r * (1 + r) ** n / ((1 + r) ** n - 1) : P / n);
+    const a = amortize(P, r, emi);
+    if (!a) return null;
+    // Where the balance would be today on that plan
+    let bal = P;
+    for (let i = 0; i < Math.min(emisSoFar(l), a.months); i++) bal -= Math.min(emi, bal + bal * r) - bal * r;
+    const start = new Date(l.startDate + 'T00:00:00');
+    return { emi, months: a.months, totalInterest: a.interest, balanceNow: Math.round(Math.max(0, bal)),
+      end: new Date(start.getFullYear(), start.getMonth() + a.months - 1, 1) };
+  }
+
+  const loanEmi = l => Number(l.emi) || (loanPlan(l) || {}).emi || 0;
+
+  // Month of the last EMI, monthsLeft EMIs after the ones already due
+  function lastEmiMonth(l, monthsLeft) {
+    if (l.startDate) {
+      const start = new Date(l.startDate + 'T00:00:00');
+      return new Date(start.getFullYear(), start.getMonth() + emisSoFar(l) + monthsLeft - 1, 1);
+    }
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() + monthsLeft, 1);
+  }
+
   function loanStats(l) {
-    const P = holdingNow(l).value, r = (Number(l.rate) || 0) / 1200, emi = Number(l.emi) || 0;
-    let monthsLeft = null, interestLeft = null, interestPaid = null;
+    const now = holdingNow(l);
+    const P = now.value, r = (Number(l.rate) || 0) / 1200, emi = loanEmi(l);
+    let monthsLeft = null, interestLeft = null, interestPaid = null, interestSource = null;
     if (emi > 0 && P > 0) {
       const a = amortize(P, r, emi);
       if (a) { monthsLeft = a.months; interestLeft = a.interest; }
     } else if (P === 0) { monthsLeft = 0; interestLeft = 0; }
-    // EMIs paid so far minus the principal that's gone = interest paid
-    if (Number(l.original) && emi && l.startDate) {
-      const start = new Date(l.startDate + 'T00:00:00'), now = new Date();
-      const paidMonths = Math.max(0, (now.getFullYear() - start.getFullYear()) * 12 + now.getMonth() - start.getMonth() + (now.getDate() >= start.getDate() ? 1 : 0));
-      interestPaid = round2(Math.max(0, emi * paidMonths - (Number(l.original) - P)));
+    if (Number(l.interestPaid) > 0) {
+      // From the bank, plus the interest part of EMIs linked since
+      interestPaid = round2(Number(l.interestPaid) + (now.interestSince || 0));
+      interestSource = 'statement';
+    } else if (Number(l.original) && emi && l.startDate) {
+      // Everything paid (EMIs + prepayments) minus the principal that's gone = interest
+      interestPaid = round2(Math.max(0, emi * emisSoFar(l) + (Number(l.prepaid) || 0) - (Number(l.original) - P)));
+      interestSource = 'estimate';
     }
-    return { outstanding: P, monthsLeft, interestLeft, interestPaid };
+    return { outstanding: P, monthsLeft, interestLeft, interestPaid, interestSource };
   }
 
   // ---- Loan details for the property page ----
   function loanDetail(l) {
     const st = loanStats(l);
-    const emi = Number(l.emi) || 0, r = (Number(l.rate) || 0) / 1200, original = Number(l.original) || 0;
+    const emi = loanEmi(l), r = (Number(l.rate) || 0) / 1200, original = Number(l.original) || 0;
     let emisPaid = null, principalPaid = null;
-    if (original && emi && l.startDate && st.interestPaid !== null) {
+    if (original && st.interestPaid !== null) {
       principalPaid = round2(Math.max(0, original - st.outstanding));
       emisPaid = round2(principalPaid + st.interestPaid);
     }
+    // Against the original plan: what prepaying saved
+    const plan = loanPlan(l);
+    let saved = null;
+    if (plan && st.interestPaid !== null && st.interestLeft !== null) {
+      const actualTotal = round2(st.interestPaid + st.interestLeft);
+      const actualEnd = lastEmiMonth(l, st.monthsLeft);
+      const monthsEarlier = (plan.end.getFullYear() - actualEnd.getFullYear()) * 12 + plan.end.getMonth() - actualEnd.getMonth();
+      saved = { interest: Math.round(plan.totalInterest - actualTotal), monthsEarlier, actualTotal, prepaidPrincipal: Math.round(Math.max(0, plan.balanceNow - st.outstanding)) };
+    }
     const now = new Date();
-    const payoff = st.monthsLeft ? new Date(now.getFullYear(), now.getMonth() + st.monthsLeft, 1) : null;
+    const payoff = st.monthsLeft ? lastEmiMonth(l, st.monthsLeft) : null;
     // Year by year from now: how each year's EMIs split between interest and principal
     const years = [];
     if (emi && st.outstanding > 0 && st.monthsLeft) {
@@ -5462,13 +5520,13 @@
         row.balance = Math.max(0, bal);
       }
     }
-    return { ...st, emi, rate: Number(l.rate) || 0, original, emisPaid, principalPaid, payoff, years,
+    return { ...st, emi, rate: Number(l.rate) || 0, original, emisPaid, principalPaid, payoff, years, plan, saved,
       totalInterest: st.interestPaid !== null && st.interestLeft !== null ? round2(st.interestPaid + st.interestLeft) : null };
   }
 
   // A one-time prepayment, keeping the EMI: interest and months saved
   function prepayResult(l, extra) {
-    const st = loanStats(l), emi = Number(l.emi) || 0, r = (Number(l.rate) || 0) / 1200;
+    const st = loanStats(l), emi = loanEmi(l), r = (Number(l.rate) || 0) / 1200;
     const P = Math.max(0, st.outstanding - extra);
     if (!emi || st.monthsLeft === null) return null;
     const a = P > 0 ? amortize(P, r, emi) : { months: 0, interest: 0 };
@@ -5553,17 +5611,32 @@
         <div class="loan-box">
           <h3>${escapeHtml(l.name)} <button class="link-btn" data-pact="edit-loan" data-loan="${escapeHtml(l.id)}" style="float:right;padding:0">Edit</button></h3>
           ${x.original ? row('Loan taken', formatMoney(x.original)) : ''}
-          ${row('EMI', x.emi ? `${formatMoney(x.emi)} at ${x.rate}%` : '<i>add EMI and rate</i>')}
-          ${l.startDate ? row('First EMI', fmtDate(l.startDate)) : ''}
+          ${row('Rate', x.rate ? `${x.rate}% a year` : '<i>add the rate</i>')}
+          ${l.tenure ? row('Tenure', `${l.tenure} years${l.startDate ? ` (from ${fmtDate(l.startDate)})` : ''}`) : l.startDate ? row('First EMI', fmtDate(l.startDate)) : ''}
+          ${row('EMI now', x.emi ? formatMoney(x.emi) + (Number(l.emi) ? '' : ' <small style="color:var(--muted)">(from tenure)</small>') : '<i>add the EMI or tenure</i>')}
           ${pct !== null ? `<div class="goal-bar"><span style="width:${pct}%"></span></div><div class="pl-note">${pct.toFixed(0)}% of the loan paid off</div>` : ''}
-          <div style="height:8px"></div>
-          ${x.emisPaid !== null ? row('EMIs paid so far', formatMoney(x.emisPaid)) + row('↳ went to principal', formatMoney(x.principalPaid), 'sub') + row('↳ went to interest', formatMoney(x.interestPaid), 'sub')
-            : row('Paid so far', '<i>add loan amount, EMI and first EMI date</i>')}
+          ${x.plan ? `<div class="loan-part"><h4>📄 As planned (no prepayments)</h4>
+            ${row('EMI', formatMoney(x.plan.emi))}
+            ${row('Last EMI', x.plan.end.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }))}
+            ${row('Total interest', formatMoney(x.plan.totalInterest), 'sum')}
+            ${row('Total repaid to the bank', formatMoney(x.original + x.plan.totalInterest))}
+            ${row('Balance by now on that plan', formatMoney(x.plan.balanceNow))}</div>`
+            : '<p class="hint">Add the loan amount, rate, tenure and first EMI date to compare with the original plan.</p>'}
+          <div class="loan-part"><h4>✅ Actually</h4>
+          ${x.interestPaid !== null ? row(`Interest paid so far${x.interestSource === 'estimate' ? ' <small style="color:var(--muted)">(estimated)</small>' : ''}`, formatMoney(x.interestPaid))
+            + (x.principalPaid !== null ? row('Principal repaid so far', formatMoney(x.principalPaid)) : '')
+            : row('Interest paid so far', '<i>add it from your statement (Edit)</i>')}
           ${row('Principal still owed', formatMoney(x.outstanding))}
           ${x.interestLeft !== null ? row('Interest still to pay', formatMoney(x.interestLeft)) : ''}
-          ${x.payoff ? row('Paid off by', `${x.payoff.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })} (${yrsMo(x.monthsLeft)})`) : ''}
-          ${x.totalInterest !== null ? row('Total interest over the loan', formatMoney(x.totalInterest), 'sum') : ''}
-          ${x.totalInterest !== null && x.original ? row('Total you repay the bank', formatMoney(x.original + x.totalInterest)) : ''}
+          ${x.payoff ? row('Last EMI', `${x.payoff.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })} (${yrsMo(x.monthsLeft)} left)`) : ''}
+          ${x.totalInterest !== null ? row('Total interest you’ll pay', formatMoney(x.totalInterest), 'sum') : ''}
+          ${x.totalInterest !== null && x.original ? row('Total repaid to the bank', formatMoney(x.original + x.totalInterest)) : ''}</div>
+          ${x.saved ? (x.saved.interest > 500 || x.saved.monthsEarlier > 0
+            ? `<div class="loan-saved">🎉 Prepaying saves you <b>${formatMoney(x.saved.interest)}</b> of interest${x.saved.monthsEarlier > 0 ? ` and the loan ends <b>${yrsMo(x.saved.monthsEarlier)}</b> earlier` : ''}.
+                ${x.saved.prepaidPrincipal ? `<br><small>You're ${formatMoney(x.saved.prepaidPrincipal)} ahead of the plan’s balance.</small>` : ''}</div>`
+            : x.saved.interest < -500 ? `<div class="pl-note">On these numbers the loan costs ${formatMoney(-x.saved.interest)} more than planned (a rate rise?). Check the rate and interest paid.</div>`
+            : '<div class="pl-note">On track with the original plan: no prepayments counted yet.</div>') : ''}
+          ${x.interestSource === 'estimate' ? '<div class="pl-note">“Interest paid so far” is estimated from your EMIs and prepayments; the figure on your bank’s interest certificate is more accurate.</div>' : ''}
           ${schedule}
           ${x.interestLeft ? `<details class="more"><summary>What if I prepay?</summary>
             <div class="prepay"><input type="text" inputmode="decimal" placeholder="e.g. 2,00,000" data-prepay="${escapeHtml(l.id)}" aria-label="Prepayment amount"></div>
@@ -5745,7 +5818,7 @@
       return v.every(x => Math.abs(x - mid) <= mid * 0.25);
     }).map(g => ({ name: g.name, amount: Math.round(Object.values(g.byMonth).reduce((a, b) => a + b, 0) / n) })).sort((a, b) => b.amount - a.amount) : [];
     const sips = round2(holdings.filter(h => h.kind === 'investment').reduce((t, h) => t + (Number(h.sip) || 0), 0));
-    const emis = round2(holdings.filter(h => h.kind === 'liability' && holdingNow(h).value > 0).reduce((t, h) => t + (Number(h.emi) || 0), 0));
+    const emis = round2(holdings.filter(h => h.kind === 'liability' && holdingNow(h).value > 0).reduce((t, h) => t + loanEmi(h), 0));
     const insurance = Math.round(holdings.filter(h => h.kind === 'insurance').reduce((t, h) => t + (Number(h.premium) || 0), 0) / 12);
     const free = Math.round(income - spend - sips - emis - insurance);
     // Each goal: what's left, per month to make the date, minus SIPs already flowing into its funds
@@ -5948,7 +6021,7 @@
     } else if (h.kind === 'liability') {
       const paid = Number(h.original) ? Math.min(100, Math.max(0, (1 - now.value / h.original) * 100)) : null;
       const ls = loanStats(h);
-      sub = [h.type, Number(h.emi) ? `EMI ${formatMoney(h.emi)}` : '', Number(h.rate) ? `${h.rate}%` : '', paid !== null ? `${paid.toFixed(0)}% paid off` : '',
+      sub = [h.type, loanEmi(h) ? `EMI ${formatMoney(loanEmi(h))}` : '', Number(h.rate) ? `${h.rate}%` : '', paid !== null ? `${paid.toFixed(0)}% paid off` : '',
         ls.monthsLeft ? `${Math.floor(ls.monthsLeft / 12)}y ${ls.monthsLeft % 12}m left` : ''].filter(Boolean).join(' · ');
       amt = formatMoney(now.value);
     } else if (h.kind === 'insurance') {
@@ -8202,7 +8275,7 @@ If the photo is not a bill or receipt, set "readable" to false.`;
   // Signed in to shared groups here before: reconnect, so friends' new bills reach your expenses
   if (localStorage.getItem(CLOUD_KEY)) loadCloud().catch(() => {});
   const joining = checkJoinLink();
-  if (!localStorage.getItem(GUIDE_KEY) && !expenses.length && !categories.length &&
+  if (!localStorage.getItem(GUIDE_KEY) && !expenses.length && !categories.length && !holdings.length && !groups.length &&
     !location.hash.startsWith(SHARE_PREFIX) && !joining) startGuide();
 
   // Offline support + "install as app"; only works when served over http(s), e.g. GitHub Pages
