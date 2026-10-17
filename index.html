@@ -336,7 +336,7 @@
   .nw-split { display: flex; gap: 8px; margin-top: 12px; }
   .nw-split > div { flex: 1; padding: 10px; border-radius: 12px; background: var(--bg); text-align: center; }
   .nw-split .lbl { font-size: 12px; color: var(--muted); }
-  .nw-split .val { margin-top: 2px; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .nw-split .val { margin-top: 2px; font-size: min(17px, 4.1vw); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .alloc-bar { display: flex; gap: 2px; height: 12px; margin: 14px 0 8px; border-radius: 6px; overflow: hidden; }
   .alloc-bar span { display: block; height: 100%; }
   .alloc-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
@@ -351,6 +351,27 @@
   .h-row .amt small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
   .h-row .amt small.pos { color: var(--income); }
   .h-row .amt small.neg { color: var(--danger-ink); }
+  /* Property / vehicle page */
+  .prop-since { margin-top: 8px; text-align: center; font-size: 12px; color: var(--muted); }
+  .cost-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--border); font-size: 14px; cursor: pointer; }
+  .cost-row:last-of-type { border-bottom: none; }
+  .cost-row .lbl { flex: 1; min-width: 0; }
+  .cost-row .lbl small { display: block; font-size: 12px; color: var(--muted); }
+  .cost-row .amt { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cost-row.static { cursor: default; }
+  .type-bar { display: flex; height: 8px; gap: 2px; border-radius: 4px; overflow: hidden; margin: 6px 0 10px; }
+  .type-bar span { display: block; height: 100%; }
+  .loan-box { padding: 12px; border-radius: 12px; background: var(--bg); margin-top: 10px; }
+  .loan-box h3 { margin: 0 0 6px; font-size: 14px; }
+  .sched { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .sched th, .sched td { padding: 5px 4px; text-align: right; border-bottom: 1px solid var(--border); }
+  .sched th:first-child, .sched td:first-child { text-align: left; }
+  .sched th { color: var(--muted); font-weight: 600; }
+  details.more { margin-top: 10px; }
+  details.more summary { cursor: pointer; color: var(--accent-ink); font-size: 14px; font-weight: 600; }
+  .prepay { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .prepay input { flex: 1; }
+  .prepay-out { margin-top: 8px; font-size: 13px; line-height: 1.5; }
   .alloc-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); margin: 0 !important; color: var(--text) !important; font-size: 14px !important; }
   .alloc-row:last-child { border-bottom: none; }
   .alloc-row span { flex: 1; min-width: 0; }
@@ -1113,6 +1134,11 @@
         <label for="paidFrom">Paid from (optional)</label>
         <select id="paidFrom"></select>
       </div>
+      <div id="costOfField" hidden>
+        <label for="costOf">Cost of a property or vehicle (optional)</label>
+        <select id="costOf"></select>
+        <select id="costType" style="margin-top:8px" aria-label="Type of cost" hidden></select>
+      </div>
       <label for="note">Note (optional)</label>
       <input type="text" id="note" placeholder="e.g. Lunch with friends">
       <div id="billField">
@@ -1224,6 +1250,27 @@
       <div class="btn-row">
         <button type="button" class="btn danger" id="holdingDelete" style="display:none">Delete</button>
         <button type="button" class="btn secondary" onclick="closeModal('holdingModal')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- One buying cost of a property or vehicle (base price, stamp duty, …) -->
+<div class="modal-bg" id="costModal" onclick="if (event.target === this) closeModal('costModal')">
+  <div class="modal">
+    <h3 id="costTitle">Add buying cost</h3>
+    <form id="costForm">
+      <label for="costLabel">What for</label>
+      <input type="text" id="costLabel" list="costLabels" autocomplete="off" required placeholder="e.g. Stamp duty">
+      <datalist id="costLabels"></datalist>
+      <label for="costAmount">Amount</label>
+      <input class="big" type="text" id="costAmount" inputmode="decimal" autocomplete="off" required placeholder="0">
+      <label for="costDate">Date (optional)</label>
+      <input type="date" id="costDate">
+      <div class="btn-row">
+        <button type="button" class="btn danger" id="costDelete" style="display:none">Delete</button>
+        <button type="button" class="btn secondary" onclick="closeModal('costModal')">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
       </div>
     </form>
@@ -2320,7 +2367,8 @@
                   ? ` · <span class="split-tag">👥 your share of ${formatMoney(e.split.total)}</span>` : ''}${e.shared
                   ? ` · <span class="split-tag">☁️ ${sharedEntryTag(e)}</span>` : ''}${investedIn(e)
                   ? ` · <span class="invest-tag">📈 into ${escapeHtml(investedIn(e).name)}</span>` : ''}${typeOf(e) === 'income' && findHolding(e.toHolding)
-                  ? ` · <span class="invest-tag">🏦 into ${escapeHtml(findHolding(e.toHolding).name)}</span>` : ''}</div>
+                  ? ` · <span class="invest-tag">🏦 into ${escapeHtml(findHolding(e.toHolding).name)}</span>` : ''}${findHolding(e.costOf)
+                  ? ` · <span class="invest-tag">🔧 ${escapeHtml(findHolding(e.costOf).name)} · ${escapeHtml(e.costType || 'Other')}</span>` : ''}</div>
               </div>
               ${typeOf(e) === 'income'
                 ? `<div class="amount income">+${incomeMoney(e.amount)}</div>`
@@ -3195,6 +3243,7 @@
     holdingTouched = false;
     fillHoldingOptions('');
     fillPaidFrom(defaultPaidFrom());
+    fillCostOf('', '');
     setEntryType('expense');
     updateCalc();
     document.getElementById('deleteBtn').style.display = 'none';
@@ -3220,6 +3269,7 @@
     holdingTouched = true; // keep what was chosen
     fillHoldingOptions(e.toHolding || '');
     fillPaidFrom(e.paidFrom || '');
+    fillCostOf(e.costOf || '', e.costType || '');
     document.getElementById('amount').value = e.split ? e.split.total : e.amount;
     updateCalc();
     setEntryType(typeOf(e), e.category, e.subcategory || '', e.detail || '');
@@ -3312,6 +3362,8 @@
     const paidFrom = entryType === 'expense' && !data.split && document.getElementById('paidFrom').value;
     if (toHolding) data.toHolding = toHolding;
     if (paidFrom) data.paidFrom = paidFrom;
+    const costOf = entryType === 'expense' && !data.split && document.getElementById('costOf').value;
+    if (costOf) { data.costOf = costOf; data.costType = document.getElementById('costType').value || 'Other'; }
     // linkedAt: when it was linked, so it counts on top of values typed in before that
     if ((toHolding || paidFrom) && (!editing || editing.toHolding !== (toHolding || undefined) || editing.paidFrom !== (paidFrom || undefined))) {
       data.linkedAt = Date.now();
@@ -3324,6 +3376,7 @@
       if (!bill) delete editing.bill;
       if (!toHolding) delete editing.toHolding;
       if (!paidFrom) delete editing.paidFrom;
+      if (!costOf) { delete editing.costOf; delete editing.costType; }
       if (!toHolding && !paidFrom) delete editing.linkedAt;
     } else if (editingId) {
       // Deleted on another device while this form was open: saving brings it back
@@ -5195,14 +5248,12 @@
     asset: [
       { key: 'name', label: 'Name', placeholder: 'e.g. Our flat, Gold coins', required: true },
       { key: 'type', label: 'Type', type: 'select', options: ASSET_TYPES },
-      { key: 'value', label: 'Current value (estimate)', type: 'money', value: true },
-      { key: 'cost', label: 'What you paid (optional)', type: 'money' },
-      // A home: what it really costs (see homeCostHtml)
-      { key: 'purchaseDate', label: 'Bought on', type: 'date', home: true },
-      { key: 'otherCosts', label: 'Other buying costs (optional)', type: 'money', home: true, hint: 'Stamp duty, registration, brokerage, interiors…' },
-      { key: 'maintenance', label: 'Maintenance per month (optional)', type: 'money', home: true },
-      { key: 'maintCategory', label: 'Or count actual maintenance spending from', type: 'category', catType: 'expense', home: true,
-        hint: 'If you record maintenance as expenses, pick their category to use the real amounts instead.' },
+      { key: 'value', label: 'Selling price now (your estimate)', type: 'money', value: true, hint: 'What it would sell for today. Update it now and then.' },
+      // Buying costs, maintenance and the loan are on its own page (see renderPropertyPage)
+      { key: 'purchaseDate', label: 'Bought on', type: 'date' },
+      { key: 'maintBefore', label: 'Maintenance before you tracked it here (optional)', type: 'money', hint: 'One total for older running costs, so the full cost adds up.' },
+      { key: 'maintenance', label: 'Fixed maintenance per month (optional)', type: 'money',
+        hint: 'Only if you don’t add it as expenses: counted for every month since you bought it.' },
       { key: 'rented', label: 'It is (or was) rented out', type: 'checkbox', home: true },
       { key: 'rent', label: 'Rent per month', type: 'money', home: true, rent: true },
       { key: 'rentSince', label: 'Rented out since', type: 'date', home: true, rent: true },
@@ -5255,6 +5306,14 @@
       if (h.kind === 'asset' && h.type === 'Gold & jewellery') { h.kind = 'gold'; h.type = /coin|bar|biscuit/i.test(h.name) ? 'Coins / bars' : 'Jewellery'; movedGold = true; }
       if (h.kind === 'goal' && h.links && !h.alloc) { h.alloc = Object.fromEntries(h.links.map(id => [id, '100%'])); delete h.links; movedGold = true; }
     });
+    // Price fields became a list of buying costs
+    holdings.forEach(h => {
+      if (h.kind !== 'asset' || h.buyCosts || !(Number(h.cost) || Number(h.otherCosts))) return;
+      h.buyCosts = [];
+      if (Number(h.cost)) h.buyCosts.push({ id: newId(), label: h.type === 'Vehicle' ? 'Ex-showroom price' : 'Base price', amount: Number(h.cost), date: h.purchaseDate || '' });
+      if (Number(h.otherCosts)) h.buyCosts.push({ id: newId(), label: 'Other buying costs', amount: Number(h.otherCosts), date: h.purchaseDate || '' });
+      movedGold = true;
+    });
     if (movedGold) saveHoldings();
     const KEY = 'moneyManager.linksFixed.v1';
     if (localStorage.getItem(KEY)) return;
@@ -5300,7 +5359,7 @@
     if (h.kind === 'asset' || h.kind === 'gold') {
       // What you paid (a home: with stamp duty etc.) plus money added since, against what it's worth
       const added = sumAmounts(holdingPayments(h, true));
-      const base = num(h.cost) + (h.type === 'Home' ? num(h.otherCosts) : 0);
+      const base = h.buyCosts ? sumAmounts(h.buyCosts) : num(h.cost) + (h.type === 'Home' ? num(h.otherCosts) : 0);
       return { value: round2(num(h.value) + added), cost: base ? round2(base + added) : 0 };
     }
     if (h.kind === 'liability') {
@@ -5347,13 +5406,26 @@
   }
 
   // ---- Loans: months and interest left, interest paid so far ----
+  // Paying P down with this EMI at monthly rate r, month by month (the last EMI is smaller):
+  // { months, interest }, or null if the EMI doesn't even cover the interest
+  function amortize(P, r, emi) {
+    let bal = P, months = 0, interest = 0;
+    while (bal > 0.005) {
+      const it = bal * r;
+      if (emi <= it || months >= 1200) return null;
+      bal -= Math.min(emi, bal + it) - it;
+      interest += it;
+      months++;
+    }
+    return { months, interest: Math.round(interest) }; // a projection: whole rupees
+  }
+
   function loanStats(l) {
     const P = holdingNow(l).value, r = (Number(l.rate) || 0) / 1200, emi = Number(l.emi) || 0;
     let monthsLeft = null, interestLeft = null, interestPaid = null;
     if (emi > 0 && P > 0) {
-      if (r === 0) monthsLeft = Math.ceil(P / emi);
-      else if (emi > P * r) monthsLeft = Math.ceil(-Math.log(1 - r * P / emi) / Math.log(1 + r));
-      if (monthsLeft !== null) interestLeft = round2(Math.max(0, emi * monthsLeft - P));
+      const a = amortize(P, r, emi);
+      if (a) { monthsLeft = a.months; interestLeft = a.interest; }
     } else if (P === 0) { monthsLeft = 0; interestLeft = 0; }
     // EMIs paid so far minus the principal that's gone = interest paid
     if (Number(l.original) && emi && l.startDate) {
@@ -5364,50 +5436,285 @@
     return { outstanding: P, monthsLeft, interestLeft, interestPaid };
   }
 
-  // ---- Home: what it really costs ----
-  function homeCostHtml(h) {
-    const months = (from, to = new Date()) => {
-      if (!from) return 0;
-      const d = new Date(from + 'T00:00:00');
-      return Math.max(0, (to.getFullYear() - d.getFullYear()) * 12 + to.getMonth() - d.getMonth());
-    };
+  // ---- Loan details for the property page ----
+  function loanDetail(l) {
+    const st = loanStats(l);
+    const emi = Number(l.emi) || 0, r = (Number(l.rate) || 0) / 1200, original = Number(l.original) || 0;
+    let emisPaid = null, principalPaid = null;
+    if (original && emi && l.startDate && st.interestPaid !== null) {
+      principalPaid = round2(Math.max(0, original - st.outstanding));
+      emisPaid = round2(principalPaid + st.interestPaid);
+    }
+    const now = new Date();
+    const payoff = st.monthsLeft ? new Date(now.getFullYear(), now.getMonth() + st.monthsLeft, 1) : null;
+    // Year by year from now: how each year's EMIs split between interest and principal
+    const years = [];
+    if (emi && st.outstanding > 0 && st.monthsLeft) {
+      let bal = st.outstanding, y = now.getFullYear(), m = now.getMonth() + 1;
+      for (let i = 0; i < st.monthsLeft && i < 600 && bal > 0.5; i++, m++) {
+        if (m > 11) { m = 0; y++; }
+        const interest = bal * r, principal = Math.min(bal, emi - interest);
+        bal -= principal;
+        let row = years[years.length - 1];
+        if (!row || row.year !== y) years.push(row = { year: y, interest: 0, principal: 0, balance: 0 });
+        row.interest += interest;
+        row.principal += principal;
+        row.balance = Math.max(0, bal);
+      }
+    }
+    return { ...st, emi, rate: Number(l.rate) || 0, original, emisPaid, principalPaid, payoff, years,
+      totalInterest: st.interestPaid !== null && st.interestLeft !== null ? round2(st.interestPaid + st.interestLeft) : null };
+  }
+
+  // A one-time prepayment, keeping the EMI: interest and months saved
+  function prepayResult(l, extra) {
+    const st = loanStats(l), emi = Number(l.emi) || 0, r = (Number(l.rate) || 0) / 1200;
+    const P = Math.max(0, st.outstanding - extra);
+    if (!emi || st.monthsLeft === null) return null;
+    const a = P > 0 ? amortize(P, r, emi) : { months: 0, interest: 0 };
+    return { months: a.months, monthsSaved: st.monthsLeft - a.months, interestSaved: Math.round(Math.max(0, st.interestLeft - a.interest)) };
+  }
+
+  const monthsSince = (from, to = new Date()) => {
+    if (!from) return 0;
+    const d = new Date(from + 'T00:00:00');
+    return Math.max(0, (to.getFullYear() - d.getFullYear()) * 12 + to.getMonth() - d.getMonth());
+  };
+  const yrsMo = n => `${Math.floor(n / 12)} yr${Math.floor(n / 12) === 1 ? '' : 's'}${n % 12 ? ` ${n % 12} mo` : ''}`;
+
+  // Everything a property or vehicle has cost, earned and is worth
+  function propertyStats(h) {
     const since = h.purchaseDate || '';
-    const loans = holdings.filter(l => l.kind === 'liability' && l.assetId === h.id).map(l => ({ l, ...loanStats(l) }));
-    const price = Number(h.cost) || 0, other = Number(h.otherCosts) || 0;
-    const maint = h.maintCategory
-      ? sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.category === h.maintCategory && (!since || e.date >= since)))
-      : (Number(h.maintenance) || 0) * months(since);
+    const buyCosts = h.buyCosts || [];
+    const buy = round2(sumAmounts(buyCosts));
+    const tagged = expenses.filter(e => typeOf(e) === 'expense' && e.costOf === h.id);
+    const byType = {};
+    tagged.forEach(e => { const t = e.costType || 'Other'; byType[t] = round2((byType[t] || 0) + e.amount); });
+    // Older ways of counting maintenance: a category of expenses, or a fixed amount each month
+    const fromCategory = h.maintCategory ? sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.category === h.maintCategory && !e.costOf && (!since || e.date >= since))) : 0;
+    const monthly = (Number(h.maintenance) || 0) * monthsSince(since);
+    const before = Number(h.maintBefore) || 0;
+    const maint = round2(sumAmounts(tagged) + fromCategory + monthly + before);
     const rent = !h.rented ? 0 : h.rentCategory
       ? sumAmounts(expenses.filter(e => typeOf(e) === 'income' && e.category === h.rentCategory && e.date >= (h.rentSince || since || '0000')))
-      : (Number(h.rent) || 0) * months(h.rentSince || since);
-    const paid = loans.reduce((t, x) => t + (x.interestPaid || 0), 0);
-    const left = loans.reduce((t, x) => t + (x.interestLeft || 0), 0);
-    const owed = loans.reduce((t, x) => t + x.outstanding, 0);
-    const unknownInterest = loans.some(x => x.interestPaid === null);
-    const soFar = round2(price + other + paid + maint - rent), lifetime = round2(soFar + left);
+      : (Number(h.rent) || 0) * monthsSince(h.rentSince || since);
+    const loans = holdings.filter(l => l.kind === 'liability' && l.assetId === h.id).map(l => ({ l, ...loanDetail(l) }));
+    const interestPaid = round2(loans.reduce((t, x) => t + (x.interestPaid || 0), 0));
+    const interestLeft = round2(loans.reduce((t, x) => t + (x.interestLeft || 0), 0));
+    const owed = round2(loans.reduce((t, x) => t + x.outstanding, 0));
     const value = holdingNow(h).value;
-    if (!price && !loans.length && !maint && !rent) return '';
+    const soFar = round2(buy + interestPaid + maint - rent);
+    return { since, buyCosts, buy, tagged, byType, fromCategory, monthly, before, maint, rent, loans, interestPaid, interestLeft, owed, value, soFar,
+      lifetime: round2(soFar + interestLeft), unknownInterest: loans.some(x => x.interestPaid === null) };
+  }
+
+  let wealthNav = { asset: null }; // a property / vehicle page open in the Wealth tab
+
+  function renderPropertyPage(el, h) {
+    const st = propertyStats(h);
+    const icon = h.type === 'Vehicle' ? '🚗' : h.type === 'Land / plot' ? '🗺️' : '🏠';
+    const money = v => formatMoney(Math.abs(v));
+    const signed = v => `<span class="${v >= 0 ? 'pos-ink' : 'neg-ink'}">${v >= 0 ? '+' : '−'}${money(v)}</span>`;
     const row = (label, v, cls = '') => `<div class="plan-row ${cls}"><span>${label}</span><span>${v}</span></div>`;
-    const yrs = since ? ` (${Math.floor(months(since) / 12)} yr ${months(since) % 12} mo)` : '';
-    return `
+    const gain = round2(st.value - st.soFar);
+    // Buying costs
+    const buyRows = st.buyCosts.map(c => `
+      <div class="cost-row" data-cost="${escapeHtml(c.id)}">
+        <div class="lbl">${escapeHtml(c.label)}${c.date ? `<small>${fmtDate(c.date)}</small>` : ''}</div>
+        <div class="amt">${formatMoney(c.amount)}</div>
+      </div>`).join('');
+    // Running costs by type, biggest first, with a bar of how they split
+    const types = Object.entries(st.byType).sort((a, b) => b[1] - a[1]);
+    const colors = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)', 'var(--p5)', 'var(--p6)', 'var(--p7)', 'var(--p8)'];
+    const typeColor = t => colors[costTypesFor(h).indexOf(t) % colors.length] || 'var(--muted)';
+    const typedTotal = types.reduce((t, [, v]) => t + v, 0);
+    const recent = [...st.tagged].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 8);
+    const maintBody = `
+      ${typedTotal ? `<div class="type-bar">${types.map(([t, v]) => `<span style="width:${v / typedTotal * 100}%;background:${typeColor(t)}" title="${escapeHtml(t)}"></span>`).join('')}</div>` : ''}
+      ${types.map(([t, v]) => `<div class="cost-row static"><div class="lbl"><i style="display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;background:${typeColor(t)}"></i>${escapeHtml(t)}
+          <small>${(c => `${c} payment${c === 1 ? '' : 's'}`)(st.tagged.filter(e => (e.costType || 'Other') === t).length)}</small></div><div class="amt">${formatMoney(v)}</div></div>`).join('')}
+      ${st.fromCategory ? `<div class="cost-row static"><div class="lbl">From “${escapeHtml(h.maintCategory)}” expenses</div><div class="amt">${formatMoney(st.fromCategory)}</div></div>` : ''}
+      ${st.monthly ? `<div class="cost-row static"><div class="lbl">Fixed ${formatMoney(h.maintenance)}/month<small>${yrsMo(monthsSince(st.since))}</small></div><div class="amt">${formatMoney(st.monthly)}</div></div>` : ''}
+      ${st.before ? `<div class="cost-row static"><div class="lbl">Before tracking here</div><div class="amt">${formatMoney(st.before)}</div></div>` : ''}
+      ${recent.length ? `<details class="more"><summary>Recent payments</summary>${recent.map(e => `
+        <div class="cost-row" data-exp="${escapeHtml(e.id)}"><div class="lbl">${escapeHtml(e.note || e.costType || e.category)}<small>${fmtDate(e.date)} · ${escapeHtml(e.costType || 'Other')}</small></div>
+          <div class="amt">${formatMoney(e.amount)}</div></div>`).join('')}</details>` : ''}
+      ${!st.maint ? `<p class="hint" style="margin-top:0">Add ${h.type === 'Vehicle' ? 'services, insurance, tyres, fuel, repairs' : 'society maintenance, repairs, property tax'}… as expenses with “Cost of” set to this, and they show up here by type.</p>` : ''}`;
+    // Loans
+    const loanBody = st.loans.map(x => {
+      const l = x.l;
+      const pct = x.original ? Math.min(100, Math.max(0, (1 - x.outstanding / x.original) * 100)) : null;
+      const schedule = x.years.length ? `
+        <details class="more"><summary>Year by year</summary>
+          <table class="sched"><thead><tr><th>Year</th><th>Interest</th><th>Principal</th><th>Left after</th></tr></thead><tbody>
+          ${x.years.map(y => `<tr><td>${y.year}</td><td>${formatMoney(Math.round(y.interest))}</td><td>${formatMoney(Math.round(y.principal))}</td><td>${formatMoney(Math.round(y.balance))}</td></tr>`).join('')}
+          </tbody></table></details>` : '';
+      return `
+        <div class="loan-box">
+          <h3>${escapeHtml(l.name)} <button class="link-btn" data-pact="edit-loan" data-loan="${escapeHtml(l.id)}" style="float:right;padding:0">Edit</button></h3>
+          ${x.original ? row('Loan taken', formatMoney(x.original)) : ''}
+          ${row('EMI', x.emi ? `${formatMoney(x.emi)} at ${x.rate}%` : '<i>add EMI and rate</i>')}
+          ${l.startDate ? row('First EMI', fmtDate(l.startDate)) : ''}
+          ${pct !== null ? `<div class="goal-bar"><span style="width:${pct}%"></span></div><div class="pl-note">${pct.toFixed(0)}% of the loan paid off</div>` : ''}
+          <div style="height:8px"></div>
+          ${x.emisPaid !== null ? row('EMIs paid so far', formatMoney(x.emisPaid)) + row('↳ went to principal', formatMoney(x.principalPaid), 'sub') + row('↳ went to interest', formatMoney(x.interestPaid), 'sub')
+            : row('Paid so far', '<i>add loan amount, EMI and first EMI date</i>')}
+          ${row('Principal still owed', formatMoney(x.outstanding))}
+          ${x.interestLeft !== null ? row('Interest still to pay', formatMoney(x.interestLeft)) : ''}
+          ${x.payoff ? row('Paid off by', `${x.payoff.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })} (${yrsMo(x.monthsLeft)})`) : ''}
+          ${x.totalInterest !== null ? row('Total interest over the loan', formatMoney(x.totalInterest), 'sum') : ''}
+          ${x.totalInterest !== null && x.original ? row('Total you repay the bank', formatMoney(x.original + x.totalInterest)) : ''}
+          ${schedule}
+          ${x.interestLeft ? `<details class="more"><summary>What if I prepay?</summary>
+            <div class="prepay"><input type="text" inputmode="decimal" placeholder="e.g. 2,00,000" data-prepay="${escapeHtml(l.id)}" aria-label="Prepayment amount"></div>
+            <div class="prepay-out" id="prepay_${escapeHtml(l.id)}">Type an amount to see the interest and time you'd save (same EMI, shorter loan).</div></details>` : ''}
+        </div>`;
+    }).join('');
+    el.innerHTML = `
       <div class="card">
-        <h2>🏠 ${escapeHtml(h.name)}: what it really costs</h2>
-        ${row('Bought for', formatMoney(price))}
-        ${other ? row('Stamp duty, registration, interiors…', formatMoney(other)) : ''}
-        ${loans.length ? row('Loan interest paid so far', unknownInterest ? '<i>add loan start date</i>' : formatMoney(paid)) : ''}
-        ${maint ? row(`Maintenance so far${yrs}`, formatMoney(maint)) : ''}
-        ${rent ? row('Rent received', '−' + formatMoney(rent)) : ''}
-        ${row('Cost so far', formatMoney(soFar), 'sum')}
-        ${loans.length ? row('Loan interest still to pay', formatMoney(left)) : ''}
-        ${loans.length ? row('Total cost over the loan', formatMoney(lifetime), 'sum') : ''}
-        <div style="margin-top:10px"></div>
-        ${row('Worth now (your estimate)', formatMoney(value))}
-        ${loans.length ? row('Loan still owed', formatMoney(owed)) : ''}
-        ${loans.length ? row('Yours if sold today', formatMoney(value - owed), 'sum') : ''}
-        <p class="hint">${value >= soFar ? `Worth ${formatMoney(value - soFar)} more than it has cost you so far.` : `Worth ${formatMoney(soFar - value)} less than it has cost you so far.`}
-          Maintenance and interest are real costs of owning; rent brings them down.</p>
+        <div class="friend-head">
+          <button class="back-btn" data-pact="back">‹ Wealth</button>
+          <h2>${icon} ${escapeHtml(h.name)}</h2>
+          <button class="link-btn" data-pact="edit">Edit</button>
+        </div>
+        <div class="nw-total"><div class="lbl">Selling price now (your estimate)</div><div class="val">${formatMoney(st.value)}</div></div>
+        <div class="nw-split">
+          <div><div class="lbl">Cost so far</div><div class="val">${formatMoney(st.soFar)}</div></div>
+          <div><div class="lbl">${!st.buy ? 'Profit / loss' : gain >= 0 ? 'Profit' : 'Loss'}</div><div class="val">${st.buy ? signed(gain) : '—'}</div></div>
+          <div><div class="lbl">Yours if sold</div><div class="val">${formatMoney(st.value - st.owed)}</div></div>
+        </div>
+        <div class="prop-since">${[h.type, st.since ? `bought ${fmtDate(st.since)} (${yrsMo(monthsSince(st.since))} ago)` : 'add the date you bought it (Edit)'].filter(Boolean).join(' · ')}</div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>🧾 Buying costs</h2><span class="h-section-total">${formatMoney(st.buy)}</span></div>
+        ${buyRows || `<p class="hint" style="margin-top:0">Add the price and everything else it took to buy it: ${h.type === 'Vehicle' ? 'road tax / RTO, registration, first-year insurance, accessories' : 'stamp duty, registration, paperwork, interiors'}…</p>`}
+        <button class="link-btn" data-pact="add-cost" style="margin-top:4px">＋ Add buying cost</button>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>🔧 Maintenance &amp; running costs</h2><span class="h-section-total">${formatMoney(st.maint)}</span></div>
+        ${maintBody}
+        <button class="link-btn" data-pact="add-maint" style="margin-top:4px">＋ Add a cost</button>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>🏦 Loan</h2>${st.loans.length ? `<span class="h-section-total">${formatMoney(st.owed)} owed</span>` : ''}</div>
+        ${loanBody || '<p class="hint" style="margin-top:0">No loan linked. If you took one for this, add it to see how much interest you pay over its life.</p>'}
+        <button class="link-btn" data-pact="add-loan" style="margin-top:6px">＋ Add a loan for this</button>
+      </div>
+      ${h.rented ? `<div class="card"><div class="card-head"><h2>💰 Rent received</h2><span class="h-section-total">${formatMoney(st.rent)}</span></div>
+        <p class="hint" style="margin-top:0">${h.rentCategory ? `From your “${escapeHtml(h.rentCategory)}” income` : `${formatMoney(h.rent)}/month since ${fmtDate(h.rentSince || st.since)}`}. It brings the cost of owning down.</p></div>` : ''}
+      <div class="card">
+        <h2>📋 Total cost of owning</h2>
+        ${row('Buying costs', formatMoney(st.buy))}
+        ${st.loans.length ? row('Loan interest paid so far', st.unknownInterest ? '<i>needs loan details</i>' : formatMoney(st.interestPaid)) : ''}
+        ${row('Maintenance &amp; running costs', formatMoney(st.maint))}
+        ${st.rent ? row('Rent received', '−' + formatMoney(st.rent)) : ''}
+        ${row('Cost so far', formatMoney(st.soFar), 'sum')}
+        ${st.loans.length ? row('Loan interest still to pay', formatMoney(st.interestLeft)) : ''}
+        ${st.loans.length ? row('Total cost by the end of the loan', formatMoney(st.lifetime), 'sum') : ''}
+        <div style="height:8px"></div>
+        ${row('Selling price now', formatMoney(st.value))}
+        ${st.loans.length ? row('Loan still owed', '−' + formatMoney(st.owed)) : ''}
+        ${row('Yours if sold today', formatMoney(st.value - st.owed), 'sum')}
+        <p class="hint">${!st.buy ? 'Add its buying costs to see whether it’s worth more or less than it cost you.' : gain >= 0 ? `Worth ${money(gain)} more than it has cost you so far.` : `Worth ${money(gain)} less than it has cost you so far.`}
+          Interest and running costs are real costs of owning${h.rented ? '; rent brings them down' : ''}.</p>
       </div>`;
   }
+
+  // Prepay calculator: live as you type
+  document.getElementById('wealthContent').addEventListener('input', ev => {
+    const id = ev.target.dataset.prepay;
+    if (!id) return;
+    const l = findHolding(id), out = document.getElementById('prepay_' + id);
+    const extra = evalAmount(ev.target.value.replace(/,/g, ''));
+    if (!(extra > 0)) { out.textContent = 'Type an amount to see the interest and time you\'d save (same EMI, shorter loan).'; return; }
+    const r = prepayResult(l, extra);
+    out.innerHTML = !r ? 'Add the EMI and interest rate to the loan first.'
+      : r.months === 0 ? `That pays the loan off completely and saves <b>${formatMoney(loanStats(l).interestLeft)}</b> of interest.`
+      : `Saves about <b>${formatMoney(r.interestSaved)}</b> of interest and <b>${yrsMo(r.monthsSaved)}</b> of EMIs. The loan would end around ${new Date(new Date().getFullYear(), new Date().getMonth() + r.months, 1).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}.`;
+  });
+
+  // ---- Buying cost items ----
+  const BUY_COST_LABELS = {
+    Home: ['Base price', 'Stamp duty', 'Registration', 'GST', 'Brokerage', 'Legal / paperwork', 'Parking', 'Interiors', 'Other'],
+    Vehicle: ['Ex-showroom price', 'Road tax / RTO', 'Registration', 'Insurance (first year)', 'Accessories', 'Extended warranty', 'Other'],
+    other: ['Base price', 'Stamp duty', 'Registration', 'Brokerage', 'Legal / paperwork', 'Other'],
+  };
+  let costEdit = null; // { h, item }
+
+  function openCostForm(h, itemId) {
+    const item = (h.buyCosts || []).find(c => c.id === itemId) || null;
+    costEdit = { h, item };
+    document.getElementById('costTitle').textContent = item ? 'Edit buying cost' : 'Add buying cost';
+    document.getElementById('costLabels').innerHTML = (BUY_COST_LABELS[h.type] || BUY_COST_LABELS.other).map(l => `<option value="${escapeHtml(l)}"></option>`).join('');
+    document.getElementById('costLabel').value = item ? item.label : (h.buyCosts || []).length ? '' : (BUY_COST_LABELS[h.type] || BUY_COST_LABELS.other)[0];
+    document.getElementById('costAmount').value = item ? item.amount : '';
+    document.getElementById('costDate').value = item ? item.date || '' : h.purchaseDate || '';
+    document.getElementById('costDelete').style.display = item ? '' : 'none';
+    openModal('costModal');
+    setTimeout(() => document.getElementById(item ? 'costAmount' : 'costLabel').focus(), 50);
+  }
+
+  document.getElementById('costForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const { h, item } = costEdit;
+    const label = document.getElementById('costLabel').value.trim();
+    const amount = evalAmount(document.getElementById('costAmount').value.replace(/,/g, ''));
+    if (!label) return;
+    if (!(amount > 0)) return showMessage('Type the amount, e.g. 150000.');
+    const data = { label, amount, date: document.getElementById('costDate').value };
+    h.buyCosts = h.buyCosts || [];
+    if (item) Object.assign(item, data); else h.buyCosts.push({ id: newId(), ...data });
+    saveHoldings();
+    closeModal('costModal');
+    render();
+    toast(item ? 'Saved' : 'Cost added');
+  });
+
+  document.getElementById('costDelete').addEventListener('click', () => {
+    const { h, item } = costEdit;
+    const at = h.buyCosts.indexOf(item);
+    h.buyCosts.splice(at, 1);
+    saveHoldings();
+    closeModal('costModal');
+    render();
+    toast(`${item.label} removed`, { action: { label: 'Undo', run: () => { h.buyCosts.splice(at, 0, item); saveHoldings(); render(); } } });
+  });
+
+  // Add a running cost: the normal expense form, already pointed at this property
+  function addPropertyCost(h) {
+    openAdd();
+    fillCostOf(h.id, '');
+    const guess = h.type === 'Vehicle' ? /car|vehicle|bike|fuel|transport/i : /home|house|flat|maint|rent/i;
+    const cat = categories.find(c => typeOf(c) === 'expense' && guess.test(c.name));
+    if (cat) {
+      const sel = document.getElementById('category');
+      sel.value = cat.name;
+      sel.dispatchEvent(new Event('change'));
+    }
+  }
+
+  document.getElementById('wealthContent').addEventListener('click', ev => {
+    const h = wealthNav.asset && findHolding(wealthNav.asset);
+    if (!h) return;
+    const act = ev.target.closest('[data-pact]');
+    const a = act && act.dataset.pact;
+    if (a === 'back') { wealthNav = { asset: null }; render(); return; }
+    if (a === 'edit') return openHoldingForm(null, h.id);
+    if (a === 'add-cost') return openCostForm(h);
+    if (a === 'add-maint') return addPropertyCost(h);
+    if (a === 'edit-loan') return openHoldingForm(null, act.dataset.loan);
+    if (a === 'add-loan') {
+      openHoldingForm('liability');
+      document.getElementById('hf_assetId').value = h.id;
+      document.getElementById('hf_type').value = h.type === 'Vehicle' ? 'Car loan' : h.type === 'Home' ? 'Home loan' : 'Other';
+      document.getElementById('hf_name').value = h.type === 'Vehicle' ? `${h.name} loan` : `${h.name} home loan`;
+      return;
+    }
+    const cost = ev.target.closest('[data-cost]');
+    if (cost) return openCostForm(h, cost.dataset.cost);
+    const exp = ev.target.closest('[data-exp]');
+    if (exp) openEdit(exp.dataset.exp);
+  });
 
   // ---- Goal plan: what you can save each month, and how it covers your goals ----
   // Uses the last 3 full months: average income and spending, regular bills, plus SIPs, EMIs and insurance.
@@ -5557,6 +5864,7 @@
     const sel = document.getElementById('toHolding');
     document.getElementById('holdingField').hidden = !any || (!income && split.on);
     document.getElementById('paidFromField').hidden = income || split.on || !holdings.some(h => h.kind === 'account');
+    document.getElementById('costOfField').hidden = income || split.on || !holdings.some(h => h.kind === 'asset');
     document.getElementById('toHoldingLabel').textContent = income ? 'Goes into account (optional)' : 'Goes into (optional)';
     const h = findHolding(sel.value);
     document.getElementById('holdingHint').textContent = income
@@ -5566,6 +5874,33 @@
       : `Adds to ${h.name}. Counts as Invested, not spent.`;
   }
   document.getElementById('toHolding').addEventListener('change', () => { holdingTouched = true; showHoldingField(); });
+
+  // Running costs by kind of property; the expense form and the property page use these
+  const COST_TYPES = {
+    Home: ['Society maintenance', 'Repairs', 'Property tax', 'Home insurance', 'Painting / renovation', 'Electricity & water', 'Other'],
+    Vehicle: ['Service', 'Insurance', 'Tyres & battery', 'Repairs', 'Fuel', 'Accessories', 'Other'],
+    other: ['Maintenance', 'Repairs', 'Tax', 'Insurance', 'Other'],
+  };
+  const costTypesFor = h => COST_TYPES[h && h.type] || COST_TYPES.other;
+
+  function fillCostOf(assetId, type) {
+    const sel = document.getElementById('costOf');
+    sel.innerHTML = '<option value="">— Not for a property or vehicle —</option>' +
+      holdingsOf('asset').map(h => `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`).join('');
+    sel.value = findHolding(assetId) ? assetId : '';
+    fillCostTypes(type);
+  }
+
+  function fillCostTypes(type) {
+    const h = findHolding(document.getElementById('costOf').value);
+    const sel = document.getElementById('costType');
+    sel.hidden = !h;
+    if (!h) return;
+    const types = costTypesFor(h);
+    sel.innerHTML = types.map(t => `<option>${escapeHtml(t)}</option>`).join('');
+    sel.value = types.includes(type) ? type : types[0];
+  }
+  document.getElementById('costOf').addEventListener('change', () => fillCostTypes(''));
 
   // ---- Wealth tab ----
 
@@ -5646,6 +5981,9 @@
 
   function renderWealthTab() {
     const el = document.getElementById('wealthContent');
+    const page = wealthNav.asset && findHolding(wealthNav.asset);
+    if (page && page.kind === 'asset') return renderPropertyPage(el, page);
+    wealthNav = { asset: null };
     const nw = netWorth();
     const monthStart = todayISO().slice(0, 8) + '01';
     const thisMonth = sumAmounts(expenses.filter(e => e.date >= monthStart && e.date <= todayISO() && typeOf(e) === 'expense' && investedIn(e)));
@@ -5699,7 +6037,6 @@
       ${section('account')}
       ${section('investment')}
       ${section('asset')}
-      ${holdings.filter(h => h.kind === 'asset' && h.type === 'Home').map(homeCostHtml).join('')}
       ${section('gold')}
       ${section('liability')}
       ${section('insurance')}`;
@@ -5709,7 +6046,14 @@
     const add = ev.target.closest('[data-add-holding]');
     if (add) return openHoldingForm(add.dataset.addHolding);
     const row = ev.target.closest('[data-holding]');
-    if (row) openHoldingForm(null, row.dataset.holding);
+    if (!row) return;
+    // Property and vehicles have their own page; everything else opens its form
+    if (findHolding(row.dataset.holding).kind === 'asset') {
+      wealthNav = { asset: row.dataset.holding };
+      window.scrollTo(0, 0);
+      return render();
+    }
+    openHoldingForm(null, row.dataset.holding);
   });
 
   // ---- Add / edit form ----
