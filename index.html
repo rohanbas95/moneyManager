@@ -1052,6 +1052,9 @@
       <button data-mode="cat">Categories</button>
       <button data-mode="sub">With subcategories</button>
     </div>
+    <label class="split-toggle" id="chartInvestedRow" style="margin:-4px 2px 14px" hidden>
+      <input type="checkbox" id="chartInvested"> Include invested (SIPs, EMIs, gold…)
+    </label>
     <div id="chartContent"></div>
   </section>
 
@@ -2318,7 +2321,10 @@
       return;
     }
     if (ui.tab === 'charts') {
-      renderCharts(ui.chartType === 'income' ? monthIncome : monthSpend);
+      // Spending can also show money that went into investments, loans or gold
+      document.getElementById('chartInvestedRow').hidden = ui.chartType === 'income';
+      document.getElementById('chartInvested').checked = !!ui.chartInvested;
+      renderCharts(ui.chartType === 'income' ? monthIncome : ui.chartInvested ? monthSpend.concat(monthInvest) : monthSpend);
       return;
     }
 
@@ -2891,6 +2897,13 @@
       return;
     }
     if (ev.target.closest('.chart-wrap')) { chartSel = null; paintChartSelection(); }
+  });
+
+  document.getElementById('chartInvested').addEventListener('change', ev => {
+    ui.chartInvested = ev.target.checked;
+    chartSel = null;
+    saveUi();
+    render();
   });
 
   document.getElementById('chartContent').addEventListener('change', ev => {
@@ -5252,6 +5265,7 @@
   const ASSET_TYPES = ['Home', 'Land / plot', 'Vehicle', 'Other'];
   const GOLD_TYPES = ['Jewellery', 'Coins / bars', 'Other'];
   const GOLD_PURITY = ['24K', '22K', '18K', 'Other'];
+  const GOLD_FINENESS = { '24K': 0.999, '22K': 0.916, '18K': 0.75 };
   const LOAN_TYPES = ['Home loan', 'Car loan', 'Personal loan', 'Education loan', 'Credit card', 'Gold loan', 'Other'];
   const INSURANCE_TYPES = ['Term life', 'Health', 'Vehicle', 'Home', 'Life (endowment / ULIP)', 'Other'];
 
@@ -5289,9 +5303,11 @@
     gold: [
       { key: 'name', label: 'Name', placeholder: 'e.g. Wedding jewellery, Gold coins', required: true },
       { key: 'type', label: 'Type', type: 'select', options: GOLD_TYPES },
-      { key: 'weight', label: 'Weight in grams (optional)', type: 'number', placeholder: 'e.g. 50' },
+      { key: 'weight', label: 'Weight in grams', type: 'number', placeholder: 'e.g. 10' },
       { key: 'purity', label: 'Purity', type: 'select', options: GOLD_PURITY },
-      { key: 'value', label: 'Current value (estimate)', type: 'money', value: true, hint: 'Weight × today’s gold rate, roughly.' },
+      { key: 'goldAuto', label: '📡 Update the value from today’s gold rate', type: 'checkbox',
+        hint: 'Weight × purity × today’s rate (see the rate at the top of Gold & jewellery; you can match it to your jeweller’s).' },
+      { key: 'value', label: 'Current value (estimate)', type: 'money', value: true, manual: true, hint: 'Weight × today’s gold rate, roughly.' },
       { key: 'cost', label: 'What you paid (optional)', type: 'money' },
     ],
     liability: [
@@ -5419,7 +5435,13 @@
       // What you paid (a home: with stamp duty etc.) plus money added since, against what it's worth
       const added = sumAmounts(holdingPayments(h, true));
       const base = h.buyCosts ? sumAmounts(h.buyCosts) : num(h.cost) + (h.type === 'Home' ? num(h.otherCosts) : 0);
-      return { value: round2(num(h.value) + added), cost: base ? round2(base + added) : 0 };
+      const cost = base ? round2(base + added) : 0;
+      const rate = h.kind === 'gold' && h.goldAuto && num(h.weight) && goldRate24();
+      if (rate) {
+        const fine = GOLD_FINENESS[h.purity] || 1;
+        return { value: Math.round(num(h.weight) * fine * rate + added), cost, rate: rate * fine };
+      }
+      return { value: round2(num(h.value) + added), cost };
     }
     if (h.kind === 'liability') {
       let bal = num(h.outstanding), interest = 0;
@@ -6155,7 +6177,8 @@
       sub = [h.type, cost ? `cost so far ${formatMoney(cost)}` : 'add buying costs', loans.length ? `loan ${formatMoney(owed)} · yours ${formatMoney(now.value - owed)}` : ''].filter(Boolean).join(' · ');
       amt = formatMoney(now.value) + plHtml(now.value, cost);
     } else if (h.kind === 'gold') {
-      sub = [h.type, h.purity && h.purity !== 'Other' ? h.purity : '', Number(h.weight) ? `${h.weight} g` : '', now.cost ? `paid ${formatMoney(now.cost)}` : ''].filter(Boolean).join(' · ');
+      sub = [h.type, h.purity && h.purity !== 'Other' ? h.purity : '', Number(h.weight) ? `${h.weight} g` : '', now.cost ? `paid ${formatMoney(now.cost)}` : '',
+        now.rate ? `📡 ₹${Math.round(now.rate).toLocaleString('en-IN')}/g today` : h.goldAuto ? '📡 waiting for the gold rate…' : ''].filter(Boolean).join(' · ');
       amt = formatMoney(now.value) + plHtml(now.value, now.cost);
     } else if (h.kind === 'liability') {
       const paid = Number(h.original) ? Math.min(100, Math.max(0, (1 - now.value / h.original) * 100)) : null;
@@ -6193,6 +6216,7 @@
 
   function renderWealthTab() {
     refreshNavs(); // only fetches if a NAV is a few hours old
+    refreshGoldRate();
     const el = document.getElementById('wealthContent');
     const page = wealthNav.asset && findHolding(wealthNav.asset);
     if (page && page.kind === 'asset') return renderPropertyPage(el, page);
@@ -6215,10 +6239,12 @@
       const pl = ['investment', 'asset', 'gold'].includes(kind) && list.length ? investedVsWorth([kind]) : null;
       const plLine = pl && pl.put ? `<div class="section-pl">Put in ${formatMoney(pl.put)} · now ${formatMoney(pl.worth)} ·
         <span class="${pl.gain >= 0 ? 'pos-ink' : 'neg-ink'}">${pl.gain >= 0 ? '+' : '−'}${formatMoney(Math.abs(pl.gain))} (${pl.gain >= 0 ? '' : '−'}${Math.abs(pl.gain / pl.put * 100).toFixed(1)}%)</span></div>` : '';
+      const rateLine = kind === 'gold' && list.some(h => h.goldAuto) ? goldRateLineHtml() : '';
       return `
         <div class="card">
           <div class="card-head"><h2>${k.icon} ${k.title}</h2>${total}</div>
           ${plLine}
+          ${rateLine}
           ${list.map(holdingRowHtml).join('')}
           <button class="link-btn" data-add-holding="${kind}" style="margin-top:4px">＋ Add ${k.one}</button>
         </div>`;
@@ -6259,6 +6285,7 @@
   }
 
   document.getElementById('wealthContent').addEventListener('click', ev => {
+    if (ev.target.closest('[data-action="gold-adjust"]')) return adjustGoldRate();
     const period = ev.target.closest('[data-plan-period]');
     if (period) {
       ui.goalPlanPeriod = period.dataset.planPeriod;
@@ -6368,7 +6395,7 @@
   // Home-only fields show for a Home; rent fields when it's rented out
   function showHoldingConditionals() {
     // Automatic NAV: fund + units instead of typing the value
-    const auto = document.getElementById('hf_navAuto');
+    const auto = document.getElementById('hf_navAuto') || document.getElementById('hf_goldAuto'); // fund NAV or gold rate
     document.querySelectorAll('#holdingFields .hf[data-nav]').forEach(el => { el.hidden = !(auto && auto.checked); });
     document.querySelectorAll('#holdingFields .hf[data-manual]').forEach(el => { el.hidden = !!(auto && auto.checked); });
     const type = document.getElementById('hf_type');
@@ -6379,7 +6406,7 @@
     });
   }
   document.getElementById('holdingFields').addEventListener('change', ev => {
-    if (ev.target.id === 'hf_type' || ev.target.id === 'hf_rented' || ev.target.id === 'hf_navAuto') showHoldingConditionals();
+    if (['hf_type', 'hf_rented', 'hf_navAuto', 'hf_goldAuto'].includes(ev.target.id)) showHoldingConditionals();
   });
 
   // Fund search: type a few words, pick from the list
@@ -6487,6 +6514,7 @@
       if (!data.scheme) return showMessage('Search for the fund and pick it from the list, or turn off the automatic NAV.');
       if (!(data.units > 0)) return showMessage('Enter how many units you hold now (Groww shows them on the fund’s page).');
     }
+    if (kind === 'gold' && data.goldAuto && !(data.weight > 0)) return showMessage('Enter the weight in grams to value it from today’s gold rate.');
     // The snapshot only moves if you changed one of its numbers (otherwise money added since keeps counting on top)
     const snap = HOLDING_FIELDS[kind].filter(f => f.value);
     let target = h;
@@ -6603,6 +6631,69 @@
     }
     if (changed) saveExpenses();
     return changed;
+  }
+
+  // ---------- Gold rate ----------
+  // gold-api.com: the live international price in rupees (free, no login, callable from the browser).
+  // Indian rates are higher (import duty, local premium), so the 24K rate = international × factor:
+  // 1.06 by default, or matched to what your jeweller quoted (Adjust), which then follows the market.
+
+  const GOLD_API = 'https://api.gold-api.com/price/XAU/INR';
+  const GOLD_KEY = 'moneyManager.goldRate.v1'; // { perGram (international, ₹), updatedAt, at, factor, matched: { rate, date } }
+  const GRAMS_PER_OUNCE = 31.1035;
+  const GOLD_DEFAULT_FACTOR = 1.06;
+  let goldData = {};
+  try { goldData = JSON.parse(localStorage.getItem(GOLD_KEY)) || {}; } catch {}
+  let goldBusy = false;
+
+  // Today's 24K rate per gram in India (estimate), or 0 if never fetched
+  const goldRate24 = () => (goldData.perGram ? goldData.perGram * (goldData.factor || GOLD_DEFAULT_FACTOR) : 0);
+
+  async function refreshGoldRate(force) {
+    const needed = holdings.some(h => h.kind === 'gold' && h.goldAuto);
+    if (goldBusy || !needed || navigator.onLine === false) return;
+    if (!force && goldData.at && Date.now() - goldData.at < 3 * 3600e3) return;
+    goldBusy = true;
+    try {
+      const res = await fetch(GOLD_API);
+      if (!res.ok) throw new Error('gold rate ' + res.status);
+      const j = await res.json();
+      if (Number(j.price) > 0) {
+        goldData = { ...goldData, perGram: Number(j.price) / GRAMS_PER_OUNCE, updatedAt: j.updatedAt || new Date().toISOString(), at: Date.now() };
+        localStorage.setItem(GOLD_KEY, JSON.stringify(goldData));
+        render();
+      }
+    } catch (err) {
+      console.warn('Gold rate:', err);
+    } finally {
+      goldBusy = false;
+    }
+  }
+
+  function goldRateLineHtml() {
+    const rate = goldRate24();
+    if (!rate) return '<div class="section-pl">📡 Fetching today’s gold rate…</div>';
+    const when = goldData.updatedAt ? new Date(goldData.updatedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+    const how = goldData.matched ? `matched to your jeweller’s ${formatMoney(goldData.matched.rate)} on ${fmtDate(goldData.matched.date)}` : 'estimate: international price + 6% import duty';
+    return `<div class="section-pl">📡 24K ≈ <b>${formatMoney(Math.round(rate * 10))}</b> / 10 g · ${when} · ${how}
+      <button class="link-btn" data-action="gold-adjust" style="padding:0 4px;font-size:12px">Adjust</button></div>`;
+  }
+
+  // Match the estimate to a real quote: the ratio then carries forward as the international price moves
+  async function adjustGoldRate() {
+    if (!goldData.perGram) return showMessage('Waiting for today’s gold rate. Check you’re online.');
+    const entered = await askText('Your jeweller’s 24K rate', {
+      text: `What does your jeweller charge today for 24K gold, per 10 grams (before GST)? The app estimates ${formatMoney(Math.round(goldRate24() * 10))}. Leave empty to go back to the estimate.`,
+      value: goldData.matched ? String(Math.round(goldData.perGram * goldData.factor * 10)) : '', placeholder: 'e.g. 135000', inputmode: 'decimal', ok: 'Use this rate',
+      validate: v => (v && !(evalAmount(v.replace(/,/g, '')) > 1000) ? 'Type the price for 10 grams, e.g. 135000.' : ''),
+    });
+    if (entered === null) return;
+    const v = entered ? evalAmount(entered.replace(/,/g, '')) : 0;
+    if (v) goldData = { ...goldData, factor: v / 10 / goldData.perGram, matched: { rate: v, date: todayISO() } };
+    else { delete goldData.factor; delete goldData.matched; }
+    localStorage.setItem(GOLD_KEY, JSON.stringify(goldData));
+    render();
+    toast(v ? 'Gold rate matched to your jeweller' : 'Back to the estimated rate');
   }
 
   // ---------- Simplify debts ----------
