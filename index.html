@@ -6635,13 +6635,14 @@
 
   // ---------- Gold rate ----------
   // gold-api.com: the live international price in rupees (free, no login, callable from the browser).
-  // Indian rates are higher (import duty, local premium), so the 24K rate = international × factor:
-  // 1.06 by default, or matched to what your jeweller quoted (Adjust), which then follows the market.
+  // Indian rates are well above it (duties, GST, local premium), so the 24K rate = international × factor:
+  // 1.18 by default (Mumbai 24K vs international, Oct 2026), or matched to a rate you saw (Adjust),
+  // which then follows the market.
 
   const GOLD_API = 'https://api.gold-api.com/price/XAU/INR';
   const GOLD_KEY = 'moneyManager.goldRate.v1'; // { perGram (international, ₹), updatedAt, at, factor, matched: { rate, date } }
   const GRAMS_PER_OUNCE = 31.1035;
-  const GOLD_DEFAULT_FACTOR = 1.06;
+  const GOLD_DEFAULT_FACTOR = 1.18;
   let goldData = {};
   try { goldData = JSON.parse(localStorage.getItem(GOLD_KEY)) || {}; } catch {}
   let goldBusy = false;
@@ -6674,7 +6675,7 @@
     const rate = goldRate24();
     if (!rate) return '<div class="section-pl">📡 Fetching today’s gold rate…</div>';
     const when = goldData.updatedAt ? new Date(goldData.updatedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
-    const how = goldData.matched ? `matched to your jeweller’s ${formatMoney(goldData.matched.rate)} on ${fmtDate(goldData.matched.date)}` : 'estimate: international price + 6% import duty';
+    const how = goldData.matched ? `matched to the ${formatMoney(goldData.matched.rate)} you saw on ${fmtDate(goldData.matched.date)}` : 'estimate: international price + Indian duties &amp; GST (tap Adjust to match today’s rate in your city)';
     return `<div class="section-pl">📡 24K ≈ <b>${formatMoney(Math.round(rate * 10))}</b> / 10 g · ${when} · ${how}
       <button class="link-btn" data-action="gold-adjust" style="padding:0 4px;font-size:12px">Adjust</button></div>`;
   }
@@ -6682,8 +6683,8 @@
   // Match the estimate to a real quote: the ratio then carries forward as the international price moves
   async function adjustGoldRate() {
     if (!goldData.perGram) return showMessage('Waiting for today’s gold rate. Check you’re online.');
-    const entered = await askText('Your jeweller’s 24K rate', {
-      text: `What does your jeweller charge today for 24K gold, per 10 grams (before GST)? The app estimates ${formatMoney(Math.round(goldRate24() * 10))}. Leave empty to go back to the estimate.`,
+    const entered = await askText('Today’s 24K rate in your city', {
+      text: `The 24K (99.9%) price per 10 grams that Google or your jeweller shows today, e.g. for Mumbai. The app estimates ${formatMoney(Math.round(goldRate24() * 10))}. Leave empty to go back to the estimate.`,
       value: goldData.matched ? String(Math.round(goldData.perGram * goldData.factor * 10)) : '', placeholder: 'e.g. 135000', inputmode: 'decimal', ok: 'Use this rate',
       validate: v => (v && !(evalAmount(v.replace(/,/g, '')) > 1000) ? 'Type the price for 10 grams, e.g. 135000.' : ''),
     });
@@ -6693,7 +6694,7 @@
     else { delete goldData.factor; delete goldData.matched; }
     localStorage.setItem(GOLD_KEY, JSON.stringify(goldData));
     render();
-    toast(v ? 'Gold rate matched to your jeweller' : 'Back to the estimated rate');
+    toast(v ? 'Gold rate matched' : 'Back to the estimated rate');
   }
 
   // ---------- Simplify debts ----------
