@@ -265,6 +265,22 @@
   .expense mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; border-radius: 3px; }
   .empty { text-align: center; color: var(--muted); padding: 40px 0; line-height: 1.6; }
   .empty .btn { margin-top: 16px; flex: none; padding: 12px 24px; }
+  /* Income vs spending bar (Charts) */
+  .flow-sum { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .flow-sum b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .flow-wrap { position: relative; margin: 14px 0 6px; }
+  .flow-bar { display: flex; gap: 2px; height: 24px; border-radius: 6px; overflow: hidden; background: var(--bg); }
+  .flow-bar span { display: block; height: 100%; min-width: 2px; cursor: pointer; }
+  .flow-bar .left { background: repeating-linear-gradient(135deg, var(--border) 0 6px, transparent 6px 10px); }
+  .flow-bar .over { background: var(--danger); }
+  .flow-marker { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--text); }
+  .flow-marker small { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .flow-legend { margin-top: 10px; }
+  .flow-legend .row { display: flex; align-items: center; gap: 10px; padding: 5px 2px; font-size: 13px; }
+  .flow-legend .row i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .flow-legend .row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .flow-legend .row b { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .flow-legend .row em { width: 44px; text-align: right; font-style: normal; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   /* Budgets */
   .budget-row { padding: 9px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
   .budget-row:last-of-type { border-bottom: none; }
@@ -2415,6 +2431,7 @@
       document.getElementById('chartOccasionalRow').hidden = ui.chartType === 'income' || !anyOccasional;
       document.getElementById('chartOccasional').checked = !!ui.chartOccasional;
       const spending = ui.chartOccasional || !anyOccasional ? monthSpend : monthSpend.filter(isDaily);
+      cashflow = { income: monthIncome, spend: monthSpend, invest: monthInvest };
       renderCharts(ui.chartType === 'income' ? monthIncome : ui.chartInvested ? spending.concat(monthInvest) : spending);
       return;
     }
@@ -2750,6 +2767,54 @@
   }
 
   // monthExpenses: entries in the chosen period of the chosen type (spending or income)
+  // ---- Income vs spending: one bar for the period's income, split into where it went ----
+  let cashflow = { income: [], spend: [], invest: [] };
+
+  function cashflowHtml() {
+    const { income, spend, invest } = cashflow;
+    const inc = sumAmounts(income), out = sumAmounts(spend), inv = sumAmounts(invest);
+    if (!inc && !out && !inv) return '';
+    const head = `<h2>💵 Income vs spending · ${escapeHtml(periodRange().title)}</h2>`;
+    if (incomeHidden()) return `<div class="card">${head}<p class="hint" style="margin-top:0">🔒 Income is hidden. <button class="link-btn" onclick="unlockIncome()">Show</button></p></div>`;
+    if (!inc) return `<div class="card">${head}<p class="hint" style="margin-top:0">No income recorded ${periodRange().empty}. Add your salary to see how much of it each category takes.</p></div>`;
+    const pctOf = v => `${(v / inc * 100).toFixed(v / inc < 0.1 ? 1 : 0)}%`;
+    // Every category (biggest first), then invested, then what's left
+    const byCat = new Map();
+    spend.forEach(e => byCat.set(e.category, (byCat.get(e.category) || 0) + e.amount));
+    const cats = [...byCat].sort((a, b) => b[1] - a[1]).map(([name, v]) => ({ name, v: round2(v), color: colorFor(name) }));
+    // On the bar, slivers under 3% of income are grouped so the rest stay readable
+    const big = cats.filter(c => c.v / inc >= 0.03), small = cats.filter(c => c.v / inc < 0.03);
+    const segs = [...big];
+    if (small.length) segs.push({ name: `Other (${small.length})`, v: round2(small.reduce((t, c) => t + c.v, 0)), color: FALLBACK_COLOR });
+    if (inv) segs.push({ name: 'Invested', v: round2(inv), color: 'var(--accent)' });
+    const used = out + inv, left = round2(inc - used);
+    const scale = Math.max(inc, used);
+    const segHtml = segs.map(x => `<span style="width:${x.v / scale * 100}%;background:${x.color}" data-flow="${escapeHtml(`${x.name}: ${formatMoney(x.v)} (${pctOf(x.v)} of income)`)}" title="${escapeHtml(`${x.name}: ${formatMoney(x.v)}`)}"></span>`).join('')
+      + (left > 0 ? `<span class="left" style="width:${left / scale * 100}%" data-flow="${escapeHtml(`Left over: ${formatMoney(left)} (${pctOf(left)} of income)`)}" title="Left over"></span>` : '');
+    const marker = used > inc ? `<div class="flow-marker" style="left:calc(${inc / scale * 100}% - 1px)"><small>income</small></div>` : '';
+    const row = (color, name, v, cls = '') => `<div class="row ${cls}"><i style="background:${color}"></i><span>${escapeHtml(name)}</span><b>${formatMoney(v)}</b><em>${pctOf(v)}</em></div>`;
+    return `
+      <div class="card">
+        ${head}
+        <div class="flow-sum">
+          <span>Income <b>${formatMoney(inc)}</b></span>
+          <span>Spent <b>${formatMoney(out)}</b> (${pctOf(out)})</span>
+          ${inv ? `<span>Invested <b>${formatMoney(inv)}</b> (${pctOf(inv)})</span>` : ''}
+          <span>${left >= 0 ? `Left <b>${formatMoney(left)}</b> (${pctOf(left)})` : `<b style="color:var(--danger-ink)">Over by ${formatMoney(-left)}</b>`}</span>
+        </div>
+        <div class="flow-wrap"${marker ? ' style="margin-top:26px"' : ''}>
+          <div class="flow-bar" role="img" aria-label="Income ${formatMoney(inc)}: ${segs.map(x => `${x.name} ${pctOf(x.v)}`).join(', ')}${left > 0 ? `, left over ${pctOf(left)}` : ''}">${segHtml}</div>
+          ${marker}
+        </div>
+        <details class="more flow-legend"><summary>Where your income went</summary>
+          ${cats.map(c => row(c.color, c.name, c.v)).join('')}
+          ${inv ? row('var(--accent)', 'Invested (SIPs, EMIs, gold…)', inv) : ''}
+          ${left > 0 ? row('var(--border)', 'Left over', left) : ''}
+        </details>
+        <p class="hint" style="margin-top:6px">The whole bar is your income. Tap a part to see it. Counts all spending, trips included.</p>
+      </div>`;
+  }
+
   function renderCharts(monthExpenses) {
     const total = sumAmounts(monthExpenses);
     document.querySelectorAll('#chartModeToggle button')
@@ -2761,8 +2826,9 @@
       el.innerHTML = `<div class="empty">🔒 Income is hidden.<br><button class="btn primary" onclick="unlockIncome()">Show income</button></div>`;
       return;
     }
+    const flow = ui.chartType === 'expense' ? cashflowHtml() : '';
     if (!monthExpenses.length) {
-      el.innerHTML = `<div class="empty"><span class="empty-icon">📊</span><span class="empty-title">No ${ui.chartType === 'income' ? 'income' : 'spending'} ${periodRange().empty}</span>
+      el.innerHTML = flow + `<div class="empty"><span class="empty-icon">📊</span><span class="empty-title">No ${ui.chartType === 'income' ? 'income' : 'spending'} ${periodRange().empty}</span>
         Charts appear as soon as you add some.<br><button class="btn primary" onclick="openAdd()">+ Add expense</button></div>`;
       return;
     }
@@ -2859,7 +2925,7 @@
     const nameToggles = `<div class="name-toggles"><span>Show names on chart</span>${nameBox('cat', 'Category')}` +
       (withSubs ? nameBox('sub', 'Subcategory') : '') + (withDetails ? nameBox('detail', 'Spent on') : '') + '</div>';
 
-    el.innerHTML = `
+    el.innerHTML = flow + `
       <div class="card">
         ${nameToggles}
         <div class="chart-wrap">
@@ -2997,6 +3063,11 @@
     chartSel = null;
     saveUi();
     render();
+  });
+
+  document.getElementById('chartContent').addEventListener('click', ev => {
+    const part = ev.target.closest('[data-flow]');
+    if (part) toast(part.dataset.flow);
   });
 
   document.getElementById('chartInvested').addEventListener('change', ev => {
