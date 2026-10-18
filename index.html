@@ -265,6 +265,41 @@
   .expense mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; border-radius: 3px; }
   .empty { text-align: center; color: var(--muted); padding: 40px 0; line-height: 1.6; }
   .empty .btn { margin-top: 16px; flex: none; padding: 12px 24px; }
+  /* Budgets */
+  .budget-row { padding: 9px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .budget-row:last-of-type { border-bottom: none; }
+  .budget-row .top { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+  .budget-row .top b { font-variant-numeric: tabular-nums; }
+  .budget-row .bar { height: 8px; margin-top: 6px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+  .budget-row .bar span { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
+  .budget-row.warn .bar span { background: var(--p4); }
+  .budget-row.over .bar span { background: var(--danger); }
+  .budget-row .sub { margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .budget-row.over .sub b { color: var(--danger-ink); }
+  .budget-edit { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .budget-edit span { flex: 1; min-width: 0; font-size: 14px; }
+  .budget-edit input { width: 130px; padding: 8px 10px; text-align: right; }
+  /* AI assistant */
+  .ai-fab {
+    position: fixed; right: 28px; bottom: 92px; z-index: 5;
+    width: 44px; height: 44px; border-radius: 50%; border: none;
+    background: var(--card); box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    font-size: 20px; cursor: pointer;
+  }
+  .ai-sheet { display: flex; flex-direction: column; height: 88vh; max-height: 88vh; padding-bottom: 12px; }
+  .ai-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .ai-head h3 { flex: 1; margin: 0; }
+  .ai-msgs { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; }
+  .ai-msg { max-width: 88%; padding: 10px 12px; border-radius: 14px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+  .ai-msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .ai-msg.model { align-self: flex-start; background: var(--bg); border-bottom-left-radius: 4px; }
+  .ai-msg.model ul { margin: 4px 0; padding-left: 18px; }
+  .ai-msg.note { align-self: stretch; max-width: none; background: none; border: 1px dashed var(--border); font-size: 12px; color: var(--muted); }
+  .ai-msg pre { margin: 6px 0 0; white-space: pre-wrap; font-size: 11px; max-height: 260px; overflow: auto; }
+  .ai-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+  .ai-suggest button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); color: var(--text); font-size: 13px; cursor: pointer; text-align: left; }
+  .ai-input { display: flex; gap: 8px; margin-top: 8px; }
+  .ai-input input { flex: 1; }
   .fab {
     position: fixed;
     right: 20px;
@@ -919,7 +954,7 @@
     line-height: 1.45;
     resize: vertical;
   }
-  body.shared-mode > header, body.shared-mode > main, body.shared-mode > .fab { display: none !important; }
+  body.shared-mode > header, body.shared-mode > main, body.shared-mode > .fab, body.shared-mode > .ai-fab { display: none !important; }
   #sharedView { max-width: 600px; margin: 0 auto; padding: 16px; }
   .shared-banner { padding: 20px 16px; margin: -16px -16px 16px; background: var(--accent); color: #fff; }
   .shared-banner h1 { margin: 0; font-size: 20px; }
@@ -1031,6 +1066,7 @@
       <button type="button" class="search-clear" id="searchClear" hidden aria-label="Clear search">✕</button>
     </div>
     <div class="search-summary" id="searchSummary" hidden></div>
+    <div class="card" id="budgetCard" hidden></div>
     <div class="card" id="incomeCard">
       <h2>Income by category</h2>
       <div id="incomeBreakdown"></div>
@@ -1074,6 +1110,7 @@
 </main>
 
 <button class="fab" onclick="openAdd()">+</button>
+<button class="ai-fab" id="aiFab" onclick="openAssistant()" aria-label="Ask the AI money assistant" title="Ask the AI assistant">✨</button>
 
 <!-- Add / edit expense -->
 <div class="modal-bg" id="expenseModal" onclick="if (event.target === this) closeModal('expenseModal')">
@@ -1308,6 +1345,39 @@
   </div>
 </div>
 
+<!-- Monthly budgets per category -->
+<div class="modal-bg" id="budgetModal" onclick="if (event.target === this) closeModal('budgetModal')">
+  <div class="modal">
+    <h3>💰 Monthly budgets</h3>
+    <p class="hint" style="margin-top:0">How much you want to spend on each category in a month. Leave empty for no budget.</p>
+    <form id="budgetForm">
+      <div id="budgetList"></div>
+      <div class="btn-row">
+        <button type="button" class="btn secondary" onclick="closeModal('budgetModal')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- AI money assistant -->
+<div class="modal-bg" id="aiModal" onclick="if (event.target === this) closeModal('aiModal')">
+  <div class="modal ai-sheet">
+    <div class="ai-head">
+      <h3>✨ Money assistant</h3>
+      <button type="button" class="link-btn" id="aiShared">What’s shared</button>
+      <button type="button" class="txn-close" onclick="closeModal('aiModal')" aria-label="Close">✕</button>
+    </div>
+    <div class="ai-msgs" id="aiMsgs" aria-live="polite"></div>
+    <div class="ai-suggest" id="aiSuggest"></div>
+    <form class="ai-input" id="aiForm">
+      <input type="text" id="aiText" placeholder="Ask about your money…" autocomplete="off" enterkeyhint="send">
+      <button type="submit" class="btn primary small" id="aiSend">Send</button>
+    </form>
+    <p class="hint" style="margin-top:6px">Answers come from Google Gemini, using a summary of your data (amounts rounded; no notes or names of people). It can be wrong, and it isn’t professional financial advice.</p>
+  </div>
+</div>
+
 <!-- In-app dialog and toast (see "Dialogs & toasts") -->
 <div class="dialog-bg" id="dialog" hidden>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogText">
@@ -1519,6 +1589,7 @@
     </div>
     <div class="btn-row">
       <button class="btn primary" onclick="closeModal('settingsModal'); openCategoryManager()">Manage categories</button>
+      <button class="btn secondary" onclick="closeModal('settingsModal'); openBudgets()">💰 Budgets</button>
     </div>
     <div class="btn-row">
       <button class="btn secondary" onclick="closeModal('settingsModal'); openSyncSetup()">☁️ Sign in with Google to sync</button>
@@ -2351,6 +2422,7 @@
     renderBreakdown('incomeCard', 'incomeBreakdown', monthIncome, incomeMoney);
     renderBreakdown('expenseCard', 'expenseBreakdown', monthSpend, formatMoney);
     renderBreakdown('investCard', 'investBreakdown', monthInvest, formatMoney);
+    renderBudgetCard();
 
     // While searching, results replace the category summaries at the top
     const words = searchWords();
@@ -2362,6 +2434,7 @@
       document.getElementById('incomeCard').style.display = 'none';
       document.getElementById('expenseCard').style.display = 'none';
       document.getElementById('investCard').style.display = 'none';
+      document.getElementById('budgetCard').hidden = true;
       const inSum = sumAmounts(shown.filter(e => typeOf(e) === 'income'));
       const outSum = sumAmounts(shown.filter(e => typeOf(e) === 'expense'));
       summary.innerHTML = `<span>${shown.length} result${shown.length === 1 ? '' : 's'}</span><span>` +
@@ -3455,6 +3528,7 @@
     haptic();
     if (data.toHolding) refreshNavs(); // a SIP into an auto fund gets its units
     toast(editing ? 'Changes saved' : `${entryType === 'income' ? 'Income' : 'Expense'} added`);
+    if (entryType === 'expense' && !investedIn(data)) budgetNudge(data.category, data.date); // replaces it near / over budget
     // Save & add another: a fresh form, same type and date
     if (!editing && ev.submitter && ev.submitter.dataset.another) {
       const type = entryType, date = data.date;
@@ -5974,7 +6048,7 @@
     const groupsMap = new Map();
     spendList.forEach(e => {
       const key = [e.category, e.subcategory || '', (e.note || '').trim().toLowerCase()].join('|');
-      const g = groupsMap.get(key) || { name: e.note || e.subcategory || e.category, byMonth: {} };
+      const g = groupsMap.get(key) || { name: e.note || e.subcategory || e.category, label: [e.category, e.subcategory].filter(Boolean).join(' › '), byMonth: {} };
       const k = e.date.slice(0, 7);
       g.byMonth[k] = (g.byMonth[k] || 0) + e.amount;
       groupsMap.set(key, g);
@@ -5984,7 +6058,7 @@
       if (v.length < n) return false;
       const mid = [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)];
       return v.every(x => Math.abs(x - mid) <= mid * 0.25);
-    }).map(g => ({ name: g.name, amount: Math.round(Object.values(g.byMonth).reduce((a, b) => a + b, 0) / n) })).sort((a, b) => b.amount - a.amount) : [];
+    }).map(g => ({ name: g.name, label: g.label, amount: Math.round(Object.values(g.byMonth).reduce((a, b) => a + b, 0) / n) })).sort((a, b) => b.amount - a.amount) : [];
     const sips = round2(holdings.filter(h => h.kind === 'investment').reduce((t, h) => t + (Number(h.sip) || 0), 0));
     const emis = round2(holdings.filter(h => h.kind === 'liability' && holdingNow(h).value > 0).reduce((t, h) => t + loanEmi(h), 0));
     const insurance = Math.round(holdings.filter(h => h.kind === 'insurance').reduce((t, h) => t + (Number(h.premium) || 0), 0) / 12);
@@ -6725,6 +6799,243 @@
     render();
     toast(v ? 'Gold rate matched' : 'Back to the estimated rate');
   }
+
+  // ---------- Budgets ----------
+  // A monthly budget per expense category (category.budget). Counts what was spent in the category that
+  // month, except money that went into investments / loans / gold ("Invested").
+
+  // The month the budgets show: the month on screen, or this month for longer periods
+  function budgetMonth() {
+    const d = period.kind === 'month' ? viewDate : new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function spentInMonth(category, ym) {
+    return round2(sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.category === category && e.date.startsWith(ym) && !investedIn(e))));
+  }
+
+  function budgetRows(ym) {
+    return categories.filter(c => typeOf(c) === 'expense' && Number(c.budget) > 0).map(c => {
+      const spent = spentInMonth(c.name, ym), budget = Number(c.budget);
+      return { c, spent, budget, left: round2(budget - spent), pct: spent / budget };
+    }).sort((a, b) => b.pct - a.pct);
+  }
+
+  function renderBudgetCard() {
+    const card = document.getElementById('budgetCard');
+    const ym = budgetMonth();
+    const rows = budgetRows(ym);
+    const hasExpenseCats = categories.some(c => typeOf(c) === 'expense');
+    card.hidden = !hasExpenseCats;
+    if (!hasExpenseCats) return;
+    const monthName = new Date(ym + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long' });
+    if (!rows.length) {
+      card.innerHTML = `<div class="card-head"><h2>💰 Budgets</h2><button class="link-btn" data-budget-edit>Set budgets</button></div>
+        <p class="hint" style="margin-top:0">Give categories like Food a monthly budget to see how much you have left to spend.</p>`;
+      return;
+    }
+    const now = new Date(), thisMonth = ym === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const daysLeft = thisMonth ? new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1 : 0;
+    const total = rows.reduce((t, r) => t + r.budget, 0), spent = rows.reduce((t, r) => t + r.spent, 0);
+    card.innerHTML = `
+      <div class="card-head"><h2>💰 Budgets · ${monthName}</h2><button class="link-btn" data-budget-edit>Edit</button></div>
+      <div class="section-pl">${formatMoney(spent)} of ${formatMoney(total)} spent${thisMonth ? ` · ${daysLeft} day${daysLeft === 1 ? '' : 's'} left` : ''}</div>
+      ${rows.map(r => {
+        const cls = r.pct > 1 ? 'over' : r.pct >= 0.8 ? 'warn' : '';
+        const perDay = thisMonth && r.left > 0 ? ` · about ${formatMoney(Math.floor(r.left / daysLeft))}/day` : '';
+        return `
+          <div class="budget-row ${cls}" data-budget-edit>
+            <div class="top"><span>${escapeHtml(iconFor(r.c.name))} ${escapeHtml(r.c.name)}</span><b>${formatMoney(r.spent)} / ${formatMoney(r.budget)}</b></div>
+            <div class="bar"><span style="width:${Math.min(100, r.pct * 100)}%"></span></div>
+            <div class="sub">${r.left >= 0 ? `<b>${formatMoney(r.left)} left</b>${perDay}` : `<b>${formatMoney(-r.left)} over budget</b>`} · ${Math.round(r.pct * 100)}% used</div>
+          </div>`;
+      }).join('')}`;
+  }
+
+  document.getElementById('budgetCard').addEventListener('click', ev => {
+    if (ev.target.closest('[data-budget-edit]')) openBudgets();
+  });
+
+  function openBudgets() {
+    const cats = categories.filter(c => typeOf(c) === 'expense');
+    if (!cats.length) return showMessage('Add an expense category first (Menu → Manage categories).');
+    const ym = todayISO().slice(0, 7);
+    document.getElementById('budgetList').innerHTML = cats.map((c, i) => `
+      <label class="budget-edit"><span>${escapeHtml(iconFor(c.name))} ${escapeHtml(c.name)}<small style="display:block;color:var(--muted);font-size:12px">${formatMoney(spentInMonth(c.name, ym))} spent this month</small></span>
+        <input type="text" inputmode="decimal" autocomplete="off" placeholder="No budget" data-budget="${i}" value="${Number(c.budget) > 0 ? c.budget : ''}" aria-label="Monthly budget for ${escapeHtml(c.name)}"></label>`).join('');
+    openModal('budgetModal');
+  }
+
+  document.getElementById('budgetForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const cats = categories.filter(c => typeOf(c) === 'expense');
+    for (const input of document.querySelectorAll('#budgetList [data-budget]')) {
+      const c = cats[Number(input.dataset.budget)], text = input.value.trim().replace(/,/g, '');
+      const v = text ? evalAmount(text) : 0;
+      if (text && !(v > 0)) return showMessage(`The budget for ${c.name} should be an amount, e.g. 10000.`);
+      if (v > 0) c.budget = v; else delete c.budget;
+    }
+    saveCategories();
+    closeModal('budgetModal');
+    render();
+    toast('Budgets saved');
+  });
+
+  // After saving spending: a heads-up near or over the category's budget (this month only)
+  function budgetNudge(category, date) {
+    const c = findCategory(category);
+    if (!c || !(Number(c.budget) > 0) || !date.startsWith(todayISO().slice(0, 7))) return;
+    const spent = spentInMonth(c.name, date.slice(0, 7)), budget = Number(c.budget);
+    if (spent > budget) toast(`${c.name}: ${formatMoney(spent - budget)} over this month’s budget of ${formatMoney(budget)}`, { duration: 4500 });
+    else if (spent >= budget * 0.8) toast(`${c.name}: ${formatMoney(budget - spent)} left of ${formatMoney(budget)} this month`, { duration: 4500 });
+  }
+
+  // ---------- AI money assistant ----------
+  // Gemini (via Firebase AI Logic, like bill scanning) answers questions using a summary of your data,
+  // built fresh for each question: rounded amounts, no notes, no names of people, no account details.
+  // The conversation isn't saved anywhere.
+
+  const AI_SYSTEM = `You are a friendly, practical personal-finance assistant inside the user's Money Manager app in India.
+Base every answer on the JSON data you're given (amounts in INR, rounded to the nearest ₹100; the current month may be partial).
+Give specific, numeric, actionable answers and show quick calculations. Use Indian formatting (₹1,50,000; lakh/crore are fine).
+Keep answers short (about 200 words at most) unless asked for detail; use short bullet points.
+If the data doesn't cover something, say what the user could add in the app (budgets, goals, loan details, SIPs…). Never invent numbers.
+Think in Indian terms where it helps: emergency fund (about 6 months of expenses), SIPs, PPF/ELSS (80C), term and health insurance, home-loan prepayment vs investing.
+You are not a licensed adviser: for big or irreversible decisions suggest checking with a SEBI-registered adviser, and never recommend individual stocks.`;
+  const AI_SUGGESTIONS = ['Where can I cut my spending?', 'Am I on track for my goals?', 'Should I prepay my home loan or invest more?',
+    'How big should my emergency fund be?', 'Can I afford a ₹15 lakh car next year?'];
+  let aiHistory = []; // [{ role: 'user' | 'model', text }]
+  let aiBusy = false;
+
+  // What Gemini sees: built fresh each time, rounded, nothing that identifies people or accounts
+  function aiSummary() {
+    const r = v => Math.round((Number(v) || 0) / 100) * 100;
+    const now = new Date();
+    const months = [0, 1, 2, 3].map(i => new Date(now.getFullYear(), now.getMonth() - i, 1)).map(d => {
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const list = expenses.filter(e => e.date.startsWith(ym));
+      const spend = list.filter(e => typeOf(e) === 'expense' && !investedIn(e));
+      const byCategory = {};
+      spend.forEach(e => { byCategory[e.category] = (byCategory[e.category] || 0) + e.amount; });
+      return {
+        month: d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) + (ym === todayISO().slice(0, 7) ? ' (so far)' : ''),
+        income: r(sumAmounts(list.filter(e => typeOf(e) === 'income'))),
+        spending: r(sumAmounts(spend)),
+        occasionalSpending: r(sumAmounts(spend.filter(e => !isDaily(e)))),
+        investedOrLoanPayments: r(sumAmounts(list.filter(e => typeOf(e) === 'expense' && investedIn(e)))),
+        spendingByCategory: Object.fromEntries(Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => [k, r(v)])),
+      };
+    });
+    const plan = holdings.some(h => h.kind === 'goal') ? goalPlan() : null;
+    const nw = netWorth(), t = investedVsWorth();
+    const ofKind = k => holdings.filter(h => h.kind === k);
+    return {
+      today: todayISO(),
+      monthlyHistory: months,
+      budgetsThisMonth: budgetRows(todayISO().slice(0, 7)).map(x => ({ category: x.c.name, monthlyBudget: r(x.budget), spent: r(x.spent) })),
+      occasionalCategories: categories.filter(c => c.daily === false).map(c => c.name),
+      regularMonthlyBills: plan ? plan.regular.map(x => ({ what: x.label, amount: r(x.amount) })) : [],
+      goalPlan: plan && {
+        basedOn: planPeriod(), income: r(plan.income), dayToDaySpending: r(plan.spend), sips: r(plan.sips), emis: r(plan.emis),
+        insurancePerMonth: r(plan.insurance), freeToSavePerMonth: r(plan.free),
+        goals: plan.goals.map(x => ({ goal: x.g.name, target: r(x.target), targetDate: x.g.date || null, savedSoFar: r(x.saved),
+          neededPerMonth: r(x.need), alreadyCoveredBySips: r(x.sipIn) })),
+      },
+      netWorth: { total: r(nw.net), own: r(nw.own), owe: r(nw.owe), bank: r(nw.parts.account), investments: r(nw.parts.investment),
+        property: r(nw.parts.asset), gold: r(nw.parts.gold) },
+      investedVsWorthNow: { putIn: r(t.put), worthNow: r(t.worth) },
+      investments: ofKind('investment').map(h => { const n = holdingNow(h); return { fund: h.scheme ? h.scheme.name : h.name, type: h.type, value: r(n.value), invested: r(n.invested), monthlySip: r(h.sip) }; }),
+      property: ofKind('asset').map(h => { const st = propertyStats(h); return { type: h.type, sellingPriceEstimate: r(st.value), costOfOwningSoFar: r(st.soFar),
+        loans: st.loans.map(x => ({ outstanding: r(x.outstanding), ratePct: x.rate, emi: r(x.emi), monthsLeft: x.monthsLeft, interestStillToPay: r(x.interestLeft) })) }; }),
+      otherLoans: ofKind('liability').filter(l => !findHolding(l.assetId)).map(l => { const st = loanStats(l); return { type: l.type, outstanding: r(st.outstanding), ratePct: Number(l.rate) || null, emi: r(loanEmi(l)), monthsLeft: st.monthsLeft }; }),
+      gold: ofKind('gold').map(h => ({ type: h.type, purity: h.purity, grams: Number(h.weight) || null, value: r(holdingNow(h).value), paid: r(holdingNow(h).cost) })),
+      insurance: ofKind('insurance').map(h => ({ type: h.type, cover: r(h.cover), premiumPerYear: r(h.premium), renews: h.renewal || null })),
+    };
+  }
+
+  // Safe little markdown: escape first, then bold, bullets, line breaks
+  function aiFormat(text) {
+    const lines = escapeHtml(text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split('\n');
+    let html = '', inList = false;
+    lines.forEach(line => {
+      const item = line.match(/^\s*[-*•]\s+(.*)/);
+      if (item) { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${item[1]}</li>`; return; }
+      if (inList) { html += '</ul>'; inList = false; }
+      html += line.trim() ? line.replace(/^#{1,4}\s*(.*)/, '<b>$1</b>') + '<br>' : '<br>';
+    });
+    if (inList) html += '</ul>';
+    return html.replace(/(<br>)+$/, '');
+  }
+
+  function renderAssistant(pending) {
+    const box = document.getElementById('aiMsgs');
+    box.innerHTML = (aiHistory.length ? '' : `<div class="ai-msg model">Hi! Ask me anything about your money: spending, budgets, goals, loans or investments. I'll look at a summary of what's in the app.</div>`) +
+      aiHistory.map(m => m.role === 'note' ? `<div class="ai-msg note">${m.html}</div>`
+        : `<div class="ai-msg ${m.role}">${m.role === 'model' ? aiFormat(m.text) : escapeHtml(m.text)}</div>`).join('') +
+      (pending ? '<div class="ai-msg model"><span class="loading-spin">✨</span> Thinking…</div>' : '');
+    document.getElementById('aiSuggest').innerHTML = aiHistory.some(m => m.role === 'user') ? ''
+      : AI_SUGGESTIONS.map(q => `<button type="button" data-ask="${escapeHtml(q)}">${escapeHtml(q)}</button>`).join('');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function openAssistant() {
+    renderAssistant(false);
+    openModal('aiModal');
+    setTimeout(() => document.getElementById('aiText').focus(), 60);
+  }
+
+  async function askAssistant(question) {
+    if (aiBusy || !question.trim()) return;
+    aiBusy = true;
+    document.getElementById('aiSend').disabled = true;
+    const past = aiHistory.filter(m => m.role !== 'note');
+    aiHistory.push({ role: 'user', text: question.trim() });
+    renderAssistant(true);
+    try {
+      await loadCloud();
+      const ai = await import(FIREBASE_SDK + 'firebase-ai.js');
+      const system = AI_SYSTEM + '\n\nThe user\'s data (JSON):\n' + JSON.stringify(aiSummary());
+      let answer = null, lastErr;
+      for (const name of scanModel ? [scanModel, ...SCAN_MODELS.filter(m => m !== scanModel)] : SCAN_MODELS) {
+        try {
+          const model = ai.getGenerativeModel(ai.getAI(cloud.app, { backend: new ai.GoogleAIBackend() }), { model: name, systemInstruction: system });
+          const chat = model.startChat({ history: past.map(m => ({ role: m.role, parts: [{ text: m.text }] })) });
+          const res = await chat.sendMessage(question.trim(), { timeout: SCAN_TIMEOUT });
+          answer = res.response.text();
+          scanModel = name;
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (!/404|not found|not supported|permission|quota|429|unavailable|timeout|aborted/i.test(String(err && err.message))) break;
+        }
+      }
+      if (answer === null) throw lastErr;
+      aiHistory.push({ role: 'model', text: answer });
+    } catch (err) {
+      console.warn('Assistant:', err);
+      aiHistory.push({ role: 'note', html: scanError(err).replace('Bill scanning', 'The assistant').replace("Couldn't read the bill", "Couldn't get an answer") });
+    } finally {
+      aiBusy = false;
+      document.getElementById('aiSend').disabled = false;
+      renderAssistant(false);
+    }
+  }
+
+  document.getElementById('aiForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const input = document.getElementById('aiText');
+    const q = input.value;
+    input.value = '';
+    askAssistant(q);
+  });
+  document.getElementById('aiSuggest').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-ask]');
+    if (b) askAssistant(b.dataset.ask);
+  });
+  document.getElementById('aiShared').addEventListener('click', () => {
+    aiHistory.push({ role: 'note', html: `This summary is sent with each question (rounded; no notes, names of people or account details):<pre>${escapeHtml(JSON.stringify(aiSummary(), null, 1))}</pre>` });
+    renderAssistant(false);
+  });
 
   // ---------- Simplify debts ----------
   // Per group, like Splitwise: instead of everyone paying back whoever paid each bill, work out each
