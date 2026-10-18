@@ -744,6 +744,9 @@
   .rename-sub { display: flex; align-items: center; flex-basis: 100%; margin: 0; }
   .rename-sub input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 14px; }
   .no-subs { font-size: 12px; color: var(--muted); margin: 8px 0; }
+  .daily-toggle { margin-top: 10px !important; font-size: 13px !important; }
+  .chip.occasional { border-style: dashed; }
+  .chip .occ-tag { font-size: 11px; color: var(--muted); margin-left: 4px; }
   .details-on-btn { margin-top: 8px; padding: 4px 0; border: none; background: none; color: var(--accent-ink); font-size: 13px; cursor: pointer; }
   .mgr-details { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg); }
   .mgr-details .chip { background: var(--card); }
@@ -1052,8 +1055,11 @@
       <button data-mode="cat">Categories</button>
       <button data-mode="sub">With subcategories</button>
     </div>
-    <label class="split-toggle" id="chartInvestedRow" style="margin:-4px 2px 14px" hidden>
+    <label class="split-toggle" id="chartInvestedRow" style="margin:-4px 2px 6px" hidden>
       <input type="checkbox" id="chartInvested"> Include invested (SIPs, EMIs, gold…)
+    </label>
+    <label class="split-toggle" id="chartOccasionalRow" style="margin:6px 2px 14px" hidden>
+      <input type="checkbox" id="chartOccasional"> Include occasional (trips…)
     </label>
     <div id="chartContent"></div>
   </section>
@@ -1916,6 +1922,15 @@
   // Optional 3rd level, off unless turned on for a category: a list of what the money went on
   // (e.g. Trips: Food, Travel, Stay) shared by all its subcategories, so an entry can be Trips › Goa › Food.
   // Entries keep their detail if it's turned off again; it's just ignored until turned back on.
+  // Day-to-day spending (the default) vs occasional, like trips: a category, or some of its subcategories,
+  // can be marked occasional. Occasional spending is left out of the goal plan and, unless asked, the charts.
+  function isDaily(e) {
+    const c = findCategory(e.category);
+    if (!c) return true;
+    if (c.daily === false) return false;
+    return !(c.occasionalSubs || []).includes(e.subcategory || '');
+  }
+
   function hasDetails(category) {
     const cat = findCategory(category);
     return !!(cat && cat.detailsOn);
@@ -2324,7 +2339,12 @@
       // Spending can also show money that went into investments, loans or gold
       document.getElementById('chartInvestedRow').hidden = ui.chartType === 'income';
       document.getElementById('chartInvested').checked = !!ui.chartInvested;
-      renderCharts(ui.chartType === 'income' ? monthIncome : ui.chartInvested ? monthSpend.concat(monthInvest) : monthSpend);
+      // Occasional spending (trips…) only when asked; the switch shows once something is marked occasional
+      const anyOccasional = categories.some(c => c.daily === false || (c.occasionalSubs || []).length);
+      document.getElementById('chartOccasionalRow').hidden = ui.chartType === 'income' || !anyOccasional;
+      document.getElementById('chartOccasional').checked = !!ui.chartOccasional;
+      const spending = ui.chartOccasional || !anyOccasional ? monthSpend : monthSpend.filter(isDaily);
+      renderCharts(ui.chartType === 'income' ? monthIncome : ui.chartInvested ? spending.concat(monthInvest) : spending);
       return;
     }
 
@@ -2897,6 +2917,13 @@
       return;
     }
     if (ev.target.closest('.chart-wrap')) { chartSel = null; paintChartSelection(); }
+  });
+
+  document.getElementById('chartOccasional').addEventListener('change', ev => {
+    ui.chartOccasional = ev.target.checked;
+    chartSel = null;
+    saveUi();
+    render();
   });
 
   document.getElementById('chartInvested').addEventListener('change', ev => {
@@ -5940,7 +5967,8 @@
     const window = expenses.filter(e => used.some(k => inMonth(e, k)));
     // Plans are in whole rupees
     const income = Math.round(sumAmounts(window.filter(e => typeOf(e) === 'income')) / n);
-    const spendList = window.filter(e => typeOf(e) === 'expense' && !investedIn(e));
+    const spendList = window.filter(e => typeOf(e) === 'expense' && !investedIn(e) && isDaily(e));
+    const occasional = Math.round(sumAmounts(window.filter(e => typeOf(e) === 'expense' && !investedIn(e) && !isDaily(e))) / n);
     const spend = Math.round(sumAmounts(spendList) / n);
     // Regular bills: the same thing (category + note) every month, at a similar amount
     const groupsMap = new Map();
@@ -5976,7 +6004,7 @@
       const monthly = x.give + x.sipIn;
       x.reachBy = x.left && monthly > 0 ? new Date(now.getFullYear(), now.getMonth() + Math.ceil(x.left / monthly), 1) : null;
     });
-    return { months: used, income, spend, regular, sips, emis, insurance, free, goals, totalNeed, short: Math.max(0, totalNeed - Math.max(0, free)) };
+    return { months: used, income, spend, occasional, regular, sips, emis, insurance, free, goals, totalNeed, short: Math.max(0, totalNeed - Math.max(0, free)) };
   }
 
   function goalPlanHtml() {
@@ -6022,6 +6050,7 @@
         ${row('Income', formatMoney(plan.income))}
         ${row('Day-to-day spending', '−' + formatMoney(plan.spend))}
         ${plan.regular.slice(0, 4).map(r => row('↳ ' + escapeHtml(r.name) + ' (every month)', formatMoney(r.amount), 'sub')).join('')}
+        ${plan.occasional ? row('Occasional (trips…): not counted', formatMoney(plan.occasional), 'sub') : ''}
         ${plan.sips ? row('SIPs', '−' + formatMoney(plan.sips)) : ''}
         ${plan.emis ? row('Loan EMIs', '−' + formatMoney(plan.emis)) : ''}
         ${plan.insurance ? row('Insurance (yearly premiums ÷ 12)', '−' + formatMoney(plan.insurance)) : ''}
@@ -7165,6 +7194,7 @@
     }
     const lower = v => String(v || '').toLowerCase();
     cat.subs[subIndex] = newName;
+    if ((cat.occasionalSubs || []).includes(oldName)) cat.occasionalSubs = cat.occasionalSubs.map(x => (x === oldName ? newName : x));
     expenses.forEach(e => {
       if (lower(e.category) === lower(cat.name) && lower(e.subcategory) === lower(oldName)) e.subcategory = newName;
     });
@@ -7181,6 +7211,7 @@
     const msg = used ? `${used} entr${used === 1 ? 'y uses' : 'ies use'} it. They will be kept and still show under "${sub}".` : '';
     if (!(await askConfirm(msg, { title: `Delete "${sub}" from ${cat.name}?`, ok: 'Delete', danger: true }))) return;
     cat.subs.splice(subIndex, 1);
+    if (cat.occasionalSubs) cat.occasionalSubs = cat.occasionalSubs.filter(x => x !== sub);
     saveCategories();
     renderCategoryManager();
   }
@@ -7309,9 +7340,13 @@
                   <button type="button" class="btn secondary small" data-action="cancel-rename" data-i="${i}">Cancel</button>
                 </span>
               </form>` : `
-              <span class="chip"><span class="dot" style="background:${subColorFor(c.name, s)}"></span>${escapeHtml(s)}<button class="chip-edit" data-action="rename-sub" data-i="${i}" data-j="${j}" aria-label="Rename ${escapeHtml(s)}">✏️</button><button data-action="delete-sub" data-i="${i}" data-j="${j}" aria-label="Remove">✕</button></span>`).join('')}
+              <span class="chip${(c.occasionalSubs || []).includes(s) ? ' occasional' : ''}"><span class="dot" style="background:${subColorFor(c.name, s)}"></span>${escapeHtml(s)}${(c.occasionalSubs || []).includes(s) ? '<span class="occ-tag">occasional</span>' : ''}${typeOf(c) === 'expense' && c.daily !== false
+                ? `<button class="chip-edit" data-action="toggle-sub-daily" data-i="${i}" data-j="${j}" title="Day-to-day or occasional" aria-label="${(c.occasionalSubs || []).includes(s) ? `Make ${escapeHtml(s)} day-to-day` : `Mark ${escapeHtml(s)} as occasional`}">🌴</button>` : ''}<button class="chip-edit" data-action="rename-sub" data-i="${i}" data-j="${j}" aria-label="Rename ${escapeHtml(s)}">✏️</button><button data-action="delete-sub" data-i="${i}" data-j="${j}" aria-label="Remove">✕</button></span>`).join('')}
             </div>`
           : '<div class="no-subs">No subcategories</div>'}
+        ${typeOf(c) === 'expense' ? `<label class="split-toggle daily-toggle"><input type="checkbox" data-daily="${i}"${c.daily !== false ? ' checked' : ''}> Day-to-day spending</label>
+          ${c.daily === false ? '<p class="no-subs" style="margin-top:2px">Occasional: left out of the goal plan and, unless you include it, the charts.</p>' : ''}
+          ${c.daily !== false && c.subs.length ? '<p class="no-subs" style="margin-top:2px">Tap 🌴 on a subcategory to mark just that one as occasional (e.g. Vacation).</p>' : ''}` : ''}
         <form class="add-row add-sub" data-i="${i}">
           <input type="text" placeholder="Add subcategory to ${escapeHtml(c.name)}" required>
           <button type="submit" class="btn secondary small">+</button>
@@ -7375,6 +7410,16 @@
     document.getElementById('newCatName').focus();
   });
 
+  document.getElementById('categoriesModal').addEventListener('change', ev => {
+    const i = ev.target.dataset.daily;
+    if (i === undefined) return;
+    const c = categories[Number(i)];
+    if (ev.target.checked) delete c.daily; else c.daily = false;
+    saveCategories();
+    renderCategoryManager();
+    render();
+  });
+
   // Colour dots and swatches live both in the add form and in the list, so listen on the modal
   document.getElementById('categoriesModal').addEventListener('click', ev => {
     const btn = ev.target.closest('[data-action]');
@@ -7384,6 +7429,15 @@
     if (action === 'delete-cat') deleteCategory(owner);
     if (action === 'delete-sub') deleteSubcategory(owner, Number(btn.dataset.j));
     if (action === 'details-on') setDetailsOn(owner, true);
+    if (action === 'toggle-sub-daily') {
+      const c = categories[owner], sub = c.subs[Number(btn.dataset.j)];
+      const list = c.occasionalSubs || [];
+      c.occasionalSubs = list.includes(sub) ? list.filter(x => x !== sub) : [...list, sub];
+      saveCategories();
+      renderCategoryManager();
+      render();
+      toast(c.occasionalSubs.includes(sub) ? `${sub} is now occasional` : `${sub} is day-to-day again`);
+    }
     if (action === 'details-off') setDetailsOn(owner, false);
     if (action === 'delete-detail') deleteDetail(owner, Number(btn.dataset.k));
     if (action === 'rename-detail') {
