@@ -376,6 +376,14 @@
   .prepay { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
   .prepay input { flex: 1; }
   .prepay-out { margin-top: 8px; font-size: 13px; line-height: 1.5; }
+  .scheme-results { margin-top: 6px; max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .scheme-results:empty { display: none; }
+  .scheme-results button { display: block; width: 100%; padding: 9px 12px; border: none; border-bottom: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 13px; text-align: left; cursor: pointer; }
+  .scheme-results button:last-child { border-bottom: none; }
+  .scheme-results button small { display: block; font-size: 11px; color: var(--muted); }
+  .scheme-results button.stale { color: var(--muted); }
+  .scheme-chosen.warn { color: var(--danger-ink); }
+  .scheme-chosen { margin-top: 6px; font-size: 13px; color: var(--accent-ink); font-weight: 600; }
   .alloc-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); margin: 0 !important; color: var(--text) !important; font-size: 14px !important; }
   .alloc-row:last-child { border-bottom: none; }
   .alloc-row span { flex: 1; min-width: 0; }
@@ -3384,8 +3392,10 @@
     }
     // A new expense's account becomes the default next time (editing an old one doesn't change it)
     if (!editing && entryType === 'expense' && !data.split) { ui.lastPaidFrom = paidFrom || ''; saveUi(); }
+    const unitsStale = editing && editing.units && (editing.amount !== data.amount || editing.date !== data.date || editing.toHolding !== data.toHolding);
     if (editing) {
       Object.assign(editing, data);
+      if (unitsStale) { delete editing.units; delete editing.unitNav; delete editing.unitNavDate; }
       if (!data.split) delete editing.split;
       if (!bill) delete editing.bill;
       if (!toHolding) delete editing.toHolding;
@@ -3403,6 +3413,7 @@
     closeModal('expenseModal');
     render();
     haptic();
+    if (data.toHolding) refreshNavs(); // a SIP into an auto fund gets its units
     toast(editing ? 'Changes saved' : `${entryType === 'income' ? 'Income' : 'Expense'} added`);
     // Save & add another: a fresh form, same type and date
     if (!editing && ev.submitter && ev.submitter.dataset.another) {
@@ -3488,6 +3499,7 @@
   }
 
   const round2 = n => Math.round(n * 100) / 100;
+  const round3 = n => Math.round(n * 1000) / 1000; // mutual fund units
 
   function findGroup(id) {
     return id ? groups.find(g => g.id === id) : null;
@@ -5255,8 +5267,13 @@
       { key: 'name', label: 'Name', placeholder: 'e.g. Parag Parikh Flexi Cap', required: true },
       { key: 'type', label: 'Type', type: 'select', options: INVEST_TYPES },
       { key: 'platform', label: 'Held on (optional)', placeholder: 'e.g. Groww', list: ['Groww', 'Zerodha / Coin', 'Kuvera', 'Paytm Money', 'ET Money', 'Bank'] },
-      { key: 'invested', label: 'Invested so far', type: 'money', value: true, hint: 'Copy both numbers from Groww (or your app) now and then. New money you add as an expense is added to both.' },
-      { key: 'value', label: 'Current value', type: 'money', value: true },
+      { key: 'navAuto', label: '📡 Update the value automatically from the daily NAV', type: 'checkbox',
+        hint: 'For mutual funds and ETFs. Pick the fund and enter your units once; the value then follows the NAV every day.' },
+      { key: 'scheme', label: 'Fund', type: 'scheme', nav: true },
+      { key: 'units', label: 'Units you hold now', type: 'number', value: true, nav: true, placeholder: 'e.g. 1234.567',
+        hint: 'From Groww: open the fund to see your units (or quantity, for an ETF). SIPs you link later add units by themselves.' },
+      { key: 'invested', label: 'Invested so far', type: 'money', value: true, hint: 'Copy it from Groww (or your app) now and then. New money you add as an expense is added on top.' },
+      { key: 'value', label: 'Current value', type: 'money', value: true, manual: true },
       { key: 'sip', label: 'Monthly SIP (optional)', type: 'money' },
     ],
     asset: [
@@ -5385,8 +5402,18 @@
     }
     if (h.kind === 'investment') {
       // Invested and value were typed in together (as apps like Groww show them); new money adds to both
-      const added = sumAmounts(holdingPayments(h, true));
-      return { value: round2(num(h.value) + added), invested: round2(num(h.invested) + added) };
+      const later = holdingPayments(h, true);
+      const added = sumAmounts(later);
+      const invested = round2(num(h.invested) + added);
+      const latest = h.navAuto && h.scheme && navCache[h.scheme.code];
+      if (latest) {
+        // Units you entered plus units bought by SIPs since (worked out at their NAV); not yet known: count the money
+        const bought = later.filter(e => e.units > 0);
+        const units = round3(num(h.units) + bought.reduce((t, e) => t + e.units, 0));
+        const pending = sumAmounts(later.filter(e => !(e.units > 0)));
+        return { value: Math.round(units * latest.nav + pending), invested, units, nav: latest.nav, navDate: latest.date, pending };
+      }
+      return { value: round2(num(h.value) + added), invested };
     }
     if (h.kind === 'asset' || h.kind === 'gold') {
       // What you paid (a home: with stamp duty etc.) plus money added since, against what it's worth
@@ -6117,8 +6144,9 @@
         now.into || now.out ? `+${formatMoney(now.into)} in, −${formatMoney(now.out)} out since` : ''].filter(Boolean).join(' · ');
       amt = formatMoney(now.value);
     } else if (h.kind === 'investment') {
-      const gain = round2(now.value - now.invested);
-      sub = [h.type, h.platform, Number(h.sip) ? `SIP ${formatMoney(h.sip)}/mo` : ''].filter(Boolean).join(' · ');
+      const navInfo = now.nav ? `📡 ${now.units.toLocaleString('en-IN', { maximumFractionDigits: 3 })} units × NAV ₹${now.nav.toLocaleString('en-IN', { maximumFractionDigits: 4 })} (${fmtDate(now.navDate)})${navIsOld(now.navDate) ? ' <span class="due-soon">⚠ NAV is old: is this the right fund?</span>' : ''}`
+        : h.navAuto ? '📡 waiting for NAV…' : '';
+      sub = [h.type, h.platform, Number(h.sip) ? `SIP ${formatMoney(h.sip)}/mo` : '', navInfo].filter(Boolean).join(' · ');
       amt = formatMoney(now.value) + plHtml(now.value, now.invested);
     } else if (h.kind === 'asset') {
       const loans = holdings.filter(l => l.kind === 'liability' && l.assetId === h.id);
@@ -6164,6 +6192,7 @@
   }
 
   function renderWealthTab() {
+    refreshNavs(); // only fetches if a NAV is a few hours old
     const el = document.getElementById('wealthContent');
     const page = wealthNav.asset && findHolding(wealthNav.asset);
     if (page && page.kind === 'asset') return renderPropertyPage(el, page);
@@ -6258,7 +6287,7 @@
     kind = h ? h.kind : kind;
     const fields = HOLDING_FIELDS[kind];
     const now = h ? holdingNow(h) : { value: 0 };
-    const nowFor = key => (key === 'invested' ? now.invested : now.value) || 0;
+    const nowFor = key => (key === 'invested' ? now.invested : key === 'units' ? now.units : now.value) || 0;
     // The numbers shown for the snapshot fields (money added since included), to tell if you changed them
     const shown = Object.fromEntries(fields.filter(f => f.value).map(f => [f.key, nowFor(f.key)]));
     holdingEdit = { kind, h, shown };
@@ -6273,7 +6302,7 @@
     document.getElementById('holdingFields').innerHTML = fields.map(f => {
       const id = 'hf_' + f.key;
       const hint = f.hint ? `<p class="hint" style="margin-top:4px">${escapeHtml(f.hint)}</p>` : '';
-      return `<div class="hf" data-key="${f.key}"${f.home ? ' data-home="1"' : ''}${f.rent ? ' data-rent="1"' : ''}>${fieldHtml(f, id, hint)}</div>`;
+      return `<div class="hf" data-key="${f.key}"${f.home ? ' data-home="1"' : ''}${f.rent ? ' data-rent="1"' : ''}${f.nav ? ' data-nav="1"' : ''}${f.manual ? ' data-manual="1"' : ''}>${fieldHtml(f, id, hint)}</div>`;
     }).join('');
     document.getElementById('holdingDelete').style.display = h ? '' : 'none';
     showHoldingConditionals();
@@ -6281,6 +6310,15 @@
     if (!h) setTimeout(() => document.getElementById('hf_name').focus(), 50);
 
     function fieldHtml(f, id, hint) {
+      if (f.type === 'scheme') {
+        const sc = h && h.scheme;
+        return `<label for="${id}_q">${escapeHtml(f.label)}</label>
+          <input type="text" id="${id}_q" placeholder="Search, e.g. parag parikh flexi direct growth" autocomplete="off" value="">
+          <input type="hidden" id="${id}" value="${sc ? escapeHtml(JSON.stringify(sc)) : ''}">
+          <div class="scheme-results" id="${id}_results"></div>
+          <div class="scheme-chosen" id="${id}_chosen">${sc ? '✓ ' + escapeHtml(sc.name) : ''}</div>
+          <p class="hint" style="margin-top:4px">Pick the exact plan you hold: Direct or Regular, Growth or IDCW. Groww shows it on the fund’s page.</p>`;
+      }
       if (f.type === 'category') {
         const opts = categories.filter(c => typeOf(c) === f.catType);
         return `<label for="${id}">${escapeHtml(f.label)}</label><select id="${id}"><option value="">— Don't use —</option>${opts.map(c =>
@@ -6329,6 +6367,10 @@
 
   // Home-only fields show for a Home; rent fields when it's rented out
   function showHoldingConditionals() {
+    // Automatic NAV: fund + units instead of typing the value
+    const auto = document.getElementById('hf_navAuto');
+    document.querySelectorAll('#holdingFields .hf[data-nav]').forEach(el => { el.hidden = !(auto && auto.checked); });
+    document.querySelectorAll('#holdingFields .hf[data-manual]').forEach(el => { el.hidden = !!(auto && auto.checked); });
     const type = document.getElementById('hf_type');
     const isHome = holdingEdit.kind === 'asset' && type && type.value === 'Home';
     const rented = document.getElementById('hf_rented');
@@ -6337,7 +6379,67 @@
     });
   }
   document.getElementById('holdingFields').addEventListener('change', ev => {
-    if (ev.target.id === 'hf_type' || ev.target.id === 'hf_rented') showHoldingConditionals();
+    if (ev.target.id === 'hf_type' || ev.target.id === 'hf_rented' || ev.target.id === 'hf_navAuto') showHoldingConditionals();
+  });
+
+  // Fund search: type a few words, pick from the list
+  let schemeSearchTimer = null, schemeSearchSeq = 0;
+  document.getElementById('holdingFields').addEventListener('input', ev => {
+    if (ev.target.id !== 'hf_scheme_q') return;
+    clearTimeout(schemeSearchTimer);
+    const q = ev.target.value.trim(), box = document.getElementById('hf_scheme_results');
+    if (q.length < 3) { box.innerHTML = ''; return; }
+    schemeSearchTimer = setTimeout(async () => {
+      const seq = ++schemeSearchSeq;
+      box.innerHTML = '<button type="button" disabled>Searching…</button>';
+      try {
+        const list = await mfJson('/mf/search?q=' + encodeURIComponent(q));
+        if (seq !== schemeSearchSeq) return;
+        box.innerHTML = list.length ? list.slice(0, 25).map(x => `<button type="button" data-scheme="${escapeHtml(JSON.stringify({ code: String(x.schemeCode), name: x.schemeName }))}">${escapeHtml(x.schemeName)}<small data-navdate="${x.schemeCode}"></small></button>`).join('')
+          : '<button type="button" disabled>No funds found. Try fewer words.</button>';
+        // Latest NAV date for the first few, so closed / merged listings stand out
+        list.slice(0, 10).forEach(async x => {
+          try {
+            const j = await mfJson(`/mf/${x.schemeCode}/latest`);
+            const d = j.data && j.data[0], el = box.querySelector(`[data-navdate="${x.schemeCode}"]`);
+            if (!d || !el || seq !== schemeSearchSeq) return;
+            const date = mfDate(d.date);
+            el.textContent = navIsOld(date) ? `No NAV since ${fmtDate(date)}: probably closed` : `NAV ₹${Number(d.nav)} on ${fmtDate(date)}`;
+            if (navIsOld(date)) el.parentElement.classList.add('stale');
+          } catch {}
+        });
+      } catch {
+        if (seq === schemeSearchSeq) box.innerHTML = '<button type="button" disabled>Couldn’t search. Are you online?</button>';
+      }
+    }, 350);
+  });
+  document.getElementById('holdingFields').addEventListener('click', async ev => {
+    const pick = ev.target.closest('[data-scheme]');
+    if (!pick) return;
+    const sc = JSON.parse(pick.dataset.scheme);
+    document.getElementById('hf_scheme').value = JSON.stringify(sc);
+    document.getElementById('hf_scheme_results').innerHTML = '';
+    document.getElementById('hf_scheme_q').value = '';
+    const chosen = document.getElementById('hf_scheme_chosen');
+    chosen.textContent = '✓ ' + sc.name;
+    // Fill the name from the fund, unless you've typed your own
+    const nameInput = document.getElementById('hf_name');
+    if (!nameInput.value.trim() || nameInput.value === nameInput.dataset.auto) {
+      nameInput.value = nameInput.dataset.auto = sc.name.replace(/\s*-\s*(Direct|Regular).*$/i, '');
+    }
+    try {
+      const j = await mfJson(`/mf/${sc.code}/latest`);
+      const d = j.data && j.data[0];
+      if (d) {
+        navCache[sc.code] = { nav: Number(d.nav), date: mfDate(d.date), at: Date.now() };
+        localStorage.setItem(NAV_CACHE_KEY, JSON.stringify(navCache));
+        const date = mfDate(d.date);
+        chosen.classList.toggle('warn', navIsOld(date));
+        chosen.textContent = navIsOld(date)
+          ? `⚠ ${sc.name}: its latest NAV is from ${fmtDate(date)}, so this listing looks closed or merged. Search again and pick one with a recent NAV.`
+          : `✓ ${sc.name} · NAV ₹${Number(d.nav)} on ${fmtDate(date)}`;
+      }
+    } catch {}
   });
 
   document.getElementById('holdingForm').addEventListener('submit', async ev => {
@@ -6371,6 +6473,7 @@
         data[f.key] = alloc;
       }
       else if (f.type === 'category') data[f.key] = el.value;
+      else if (f.type === 'scheme') { try { data[f.key] = el.value ? JSON.parse(el.value) : null; } catch { data[f.key] = null; } }
       else if (f.type === 'money' || f.type === 'number') {
         const text = el.value.trim();
         const v = text ? evalAmount(text) : 0;
@@ -6380,6 +6483,10 @@
       } else data[f.key] = el.value.trim();
     }
     if (!data.name) return;
+    if (kind === 'investment' && data.navAuto) {
+      if (!data.scheme) return showMessage('Search for the fund and pick it from the list, or turn off the automatic NAV.');
+      if (!(data.units > 0)) return showMessage('Enter how many units you hold now (Groww shows them on the fund’s page).');
+    }
     // The snapshot only moves if you changed one of its numbers (otherwise money added since keeps counting on top)
     const snap = HOLDING_FIELDS[kind].filter(f => f.value);
     let target = h;
@@ -6389,7 +6496,7 @@
     }
     if (snap.length) {
       if (!h || snap.some(f => round2(data[f.key]) !== round2(shown[f.key]))) {
-        target.valueAt = Date.now();
+        target.valueAt = holdingEdit.snapAt = Date.now();
         target.history = [...(target.history || []), { date: todayISO(), ...Object.fromEntries(snap.map(f => [f.key, data[f.key]])) }].slice(-60);
       } else {
         snap.forEach(f => { data[f.key] = h[f.key]; });
@@ -6398,6 +6505,10 @@
     // Only one salary account
     if (kind === 'account' && data.salary) holdings.forEach(x => { if (x !== target && x.kind === 'account' && x.salary) x.salary = false; });
     Object.assign(target, data);
+    // Automatic NAV: keep a typed-in style value too, for when the NAV can't be fetched
+    if (kind === 'investment' && target.navAuto && target.scheme && navCache[target.scheme.code] && target.valueAt === holdingEdit.snapAt) {
+      target.value = round2(target.units * navCache[target.scheme.code].nav);
+    }
     if (kind === 'goal') delete target.links; // replaced by allocations
     saveHoldings();
     closeModal('holdingModal');
@@ -6417,6 +6528,82 @@
       action: { label: 'Undo', run: () => { holdings.push(h); saveHoldings(); render(); } },
     });
   });
+
+  // ---------- Fund NAVs (automatic investment values) ----------
+  // Mutual funds and ETFs publish their NAV every day (via AMFI). mfapi.in serves it free, without a login,
+  // and allows calls from the browser. Latest NAVs are cached on this device (not synced: each device
+  // fetches its own); units a SIP bought are saved on the expense (e.units), so they sync.
+
+  const MF_API = 'https://api.mfapi.in';
+  const NAV_CACHE_KEY = 'moneyManager.navCache.v1'; // { schemeCode: { nav, date: 'YYYY-MM-DD', at } }
+  const NAV_MAX_AGE = 6 * 3600e3;
+  let navCache = {};
+  try { navCache = JSON.parse(localStorage.getItem(NAV_CACHE_KEY)) || {}; } catch {}
+  let navBusy = false;
+
+  const mfDate = d => d.split('-').reverse().join('-'); // dd-mm-yyyy -> yyyy-mm-dd
+  // Funds publish every working day; a NAV more than 10 days old means the listing is closed or merged
+  const navIsOld = date => (Date.now() - new Date(date + 'T00:00:00')) / 864e5 > 10;
+
+  async function mfJson(path) {
+    const res = await fetch(MF_API + path);
+    if (!res.ok) throw new Error('NAV service error ' + res.status);
+    return res.json();
+  }
+
+  const autoFunds = () => holdings.filter(h => h.kind === 'investment' && h.navAuto && h.scheme && h.scheme.code);
+
+  // Fresh NAVs for funds whose cached one is old, then units for SIPs that don't have them yet
+  async function refreshNavs(force) {
+    if (navBusy || !autoFunds().length || navigator.onLine === false) return;
+    navBusy = true;
+    let changed = false;
+    try {
+      const codes = [...new Set(autoFunds().map(h => h.scheme.code))]
+        .filter(code => force || !navCache[code] || Date.now() - navCache[code].at > NAV_MAX_AGE);
+      await Promise.all(codes.map(async code => {
+        try {
+          const j = await mfJson(`/mf/${code}/latest`);
+          const d = j.data && j.data[0];
+          if (d && Number(d.nav) > 0) { navCache[code] = { nav: Number(d.nav), date: mfDate(d.date), at: Date.now() }; changed = true; }
+        } catch (err) { console.warn('NAV', code, err); }
+      }));
+      if (changed) localStorage.setItem(NAV_CACHE_KEY, JSON.stringify(navCache));
+      if (await assignSipUnits()) changed = true;
+    } finally {
+      navBusy = false;
+    }
+    if (changed) render();
+  }
+
+  // A SIP buys units at the NAV of its date (or the next published one, after a weekend / holiday)
+  async function assignSipUnits() {
+    const today = todayISO();
+    const pending = new Map(); // code -> [{ e }]
+    autoFunds().forEach(h => holdingPayments(h, true).forEach(e => {
+      if (e.units > 0 || e.date > today) return;
+      if (!pending.has(h.scheme.code)) pending.set(h.scheme.code, []);
+      pending.get(h.scheme.code).push(e);
+    }));
+    let changed = false;
+    for (const [code, list] of pending) {
+      const from = list.reduce((m, e) => (e.date < m ? e.date : m), today);
+      try {
+        const j = await mfJson(`/mf/${code}?startDate=${from}&endDate=${today}`);
+        const navs = (j.data || []).map(d => ({ date: mfDate(d.date), nav: Number(d.nav) })).filter(d => d.nav > 0).sort((a, b) => a.date.localeCompare(b.date));
+        list.forEach(e => {
+          const at = navs.find(d => d.date >= e.date);
+          if (!at) return; // not published yet: counted as money until it is
+          e.units = round3(e.amount / at.nav);
+          e.unitNav = at.nav;
+          e.unitNavDate = at.date;
+          changed = true;
+        });
+      } catch (err) { console.warn('NAV history', code, err); }
+    }
+    if (changed) saveExpenses();
+    return changed;
+  }
 
   // ---------- Simplify debts ----------
   // Per group, like Splitwise: instead of everyone paying back whoever paid each bill, work out each
