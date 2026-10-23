@@ -3604,6 +3604,12 @@
     const toHolding = (entryType === 'income' || !data.split) && document.getElementById('toHolding').value;
     const paidFrom = entryType === 'expense' && !data.split && document.getElementById('paidFrom').value;
     if (toHolding) data.toHolding = toHolding;
+    // Money put into a bank account from an expense makes it a savings account
+    const saveInto = entryType === 'expense' && toHolding && findHolding(toHolding);
+    if (saveInto && saveInto.kind === 'account' && !saveInto.savings) {
+      saveInto.savings = true;
+      saveHoldings();
+    }
     if (paidFrom) data.paidFrom = paidFrom;
     const costOf = entryType === 'expense' && !data.split && document.getElementById('costOf').value;
     if (costOf) { data.costOf = costOf; data.costType = document.getElementById('costType').value || 'Other'; }
@@ -6278,13 +6284,13 @@
 
   // Spending: into an investment / asset / loan, or a savings account. Income: into a bank account.
   function canGoInto(h) {
-    return ['investment', 'asset', 'gold', 'liability'].includes(h.kind) || (h.kind === 'account' && h.savings);
+    return ['investment', 'asset', 'gold', 'liability'].includes(h.kind) || (h.kind === 'account' && (h.savings || !h.salary));
   }
   function fillHoldingOptions(selected) {
     const sel = document.getElementById('toHolding');
     sel.innerHTML = entryType === 'income'
       ? '<option value="">— Not tracked —</option>' + holdingOptions('account', '🏦 Bank accounts')
-      : '<option value="">— Nothing: a normal expense —</option>' + holdingOptions('account', '🐷 Savings', h => h.savings) +
+      : '<option value="">— Nothing: a normal expense —</option>' + holdingOptions('account', '🐷 Savings', h => h.savings || !h.salary) +
         holdingOptions('investment', '📈 Investments') + holdingOptions('asset', '🏠 Property & vehicles') +
         holdingOptions('gold', '💍 Gold & jewellery') + holdingOptions('liability', '💳 Loans (EMI / prepayment)');
     const h = findHolding(selected);
@@ -6327,7 +6333,7 @@
     document.getElementById('holdingHint').textContent = income
       ? (h ? `Adds to the balance of ${h.name}.` : 'Pick the account it was paid into to keep its balance up to date.')
       : !h ? `For SIPs, gold, a loan EMI…: counts as Invested, not spent.${holdings.some(x => x.kind === 'account' && x.savings) ? ' Money set aside in a savings account counts as Saved.' : ''}`
-      : h.kind === 'account' ? `Moves it into ${h.name}. Counts as Saved, not spent. To use it later, pick ${h.name} under “Paid from”.`
+      : h.kind === 'account' ? `Moves it into ${h.name}${h.savings ? '' : ', which becomes your savings account'}. Counts as Saved, not spent. To use it later, pick ${h.name} under “Paid from”.`
       : h.kind === 'liability' ? `Reduces what's left on ${h.name}${Number(h.rate) ? ' (the interest part is worked out from its rate)' : ''}. Counts as Invested, not spent.`
       : `Adds to ${h.name}. Counts as Invested, not spent.`;
     showPaidFromHint();
