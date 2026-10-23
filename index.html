@@ -1064,6 +1064,7 @@
     <div class="stat"><span class="stat-label">Income</span><span class="stat-value" id="monthIncome"></span></div>
     <div class="stat"><span class="stat-label">Expenses</span><span class="stat-value" id="monthExpense"></span></div>
     <div class="stat" id="investedStat" hidden><span class="stat-label">Invested</span><span class="stat-value" id="monthInvested"></span></div>
+    <div class="stat" id="savedStat" hidden><span class="stat-label">Saved</span><span class="stat-value" id="monthSaved"></span></div>
   </div>
   <nav class="tabs">
     <button class="tab" data-tab="expenses">Transactions</button>
@@ -1095,6 +1096,10 @@
       <h2>Invested &amp; loan payments</h2>
       <div id="investBreakdown"></div>
     </div>
+    <div class="card" id="savedCard">
+      <h2>🐷 Put into savings</h2>
+      <div id="savedBreakdown"></div>
+    </div>
     <div id="expenseList"></div>
   </section>
 
@@ -1109,6 +1114,9 @@
     </div>
     <label class="split-toggle" id="chartInvestedRow" style="margin:-4px 2px 6px" hidden>
       <input type="checkbox" id="chartInvested"> Include invested (SIPs, EMIs, gold…)
+    </label>
+    <label class="split-toggle" id="chartSavedRow" style="margin:-4px 2px 6px" hidden>
+      <input type="checkbox" id="chartSaved"> Include saved (money put into savings)
     </label>
     <label class="split-toggle" id="chartOccasionalRow" style="margin:6px 2px 14px" hidden>
       <input type="checkbox" id="chartOccasional"> Include occasional (trips…)
@@ -1207,6 +1215,7 @@
       <div id="paidFromField" hidden>
         <label for="paidFrom">Paid from (optional)</label>
         <select id="paidFrom"></select>
+        <p class="hint" id="paidFromHint" style="margin-top:4px" hidden></p>
       </div>
       <div id="costOfField" hidden>
         <label for="costOf">Cost of a property or vehicle (optional)</label>
@@ -2386,19 +2395,25 @@
     document.getElementById('nextMonth').classList.toggle('nav-hidden', period.kind !== 'month');
 
     const monthIncome = monthExpenses.filter(e => typeOf(e) === 'income');
-    // Money put into investments, assets or loans is "Invested", not spent
-    const monthSpend = monthExpenses.filter(e => typeOf(e) === 'expense' && !investedIn(e));
+    // Money put into investments, assets or loans is "Invested", into a savings account "Saved": not spent
+    const monthSpend = monthExpenses.filter(isSpend);
     const monthInvest = monthExpenses.filter(e => typeOf(e) === 'expense' && investedIn(e));
+    const monthSave = monthExpenses.filter(savedIn);
     const incomeTotal = sumAmounts(monthIncome);
     const spendTotal = sumAmounts(monthSpend);
     const investTotal = sumAmounts(monthInvest);
+    // Saved = put in minus taken out: spending paid from savings was covered by money saved before
+    const savedTotal = round2(sumAmounts(monthSave) - sumAmounts(monthExpenses.filter(fromSavings)));
     const hidden = incomeHidden();
     const balanceEl = document.getElementById('monthBalance');
-    const left = incomeTotal - spendTotal - investTotal;
+    const left = incomeTotal - spendTotal - investTotal - savedTotal;
     balanceEl.textContent = hidden ? HIDDEN : formatSigned(left);
     balanceEl.classList.toggle('negative', !hidden && left < 0);
     document.getElementById('investedStat').hidden = !investTotal && !holdings.some(h => h.kind !== 'goal');
     document.getElementById('monthInvested').textContent = formatMoney(investTotal);
+    const anySavings = holdings.some(h => h.kind === 'account' && h.savings);
+    document.getElementById('savedStat').hidden = !savedTotal && !anySavings;
+    document.getElementById('monthSaved').textContent = savedTotal < 0 ? '−' + formatMoney(-savedTotal) : formatMoney(savedTotal);
     const incomeEl = document.getElementById('monthIncome');
     incomeEl.textContent = incomeMoney(incomeTotal);
     balanceEl.classList.toggle('masked', hidden);
@@ -2426,19 +2441,24 @@
       // Spending can also show money that went into investments, loans or gold
       document.getElementById('chartInvestedRow').hidden = ui.chartType === 'income';
       document.getElementById('chartInvested').checked = !!ui.chartInvested;
+      // ...and money put into savings
+      document.getElementById('chartSavedRow').hidden = ui.chartType === 'income' || (!anySavings && !monthSave.length);
+      document.getElementById('chartSaved').checked = !!ui.chartSaved;
       // Occasional spending (trips…) only when asked; the switch shows once something is marked occasional
       const anyOccasional = categories.some(c => c.daily === false || (c.occasionalSubs || []).length);
       document.getElementById('chartOccasionalRow').hidden = ui.chartType === 'income' || !anyOccasional;
       document.getElementById('chartOccasional').checked = !!ui.chartOccasional;
       const spending = ui.chartOccasional || !anyOccasional ? monthSpend : monthSpend.filter(isDaily);
-      cashflow = { income: monthIncome, spend: monthSpend, invest: monthInvest };
-      renderCharts(ui.chartType === 'income' ? monthIncome : ui.chartInvested ? spending.concat(monthInvest) : spending);
+      cashflow = { income: monthIncome, spend: monthSpend, invest: monthInvest, saved: savedTotal };
+      renderCharts(ui.chartType === 'income' ? monthIncome
+        : spending.concat(ui.chartInvested ? monthInvest : [], ui.chartSaved ? monthSave : []));
       return;
     }
 
     renderBreakdown('incomeCard', 'incomeBreakdown', monthIncome, incomeMoney);
     renderBreakdown('expenseCard', 'expenseBreakdown', monthSpend, formatMoney);
     renderBreakdown('investCard', 'investBreakdown', monthInvest, formatMoney);
+    renderBreakdown('savedCard', 'savedBreakdown', monthSave, formatMoney);
     renderBudgetCard();
 
     // While searching, results replace the category summaries at the top
@@ -2451,6 +2471,7 @@
       document.getElementById('incomeCard').style.display = 'none';
       document.getElementById('expenseCard').style.display = 'none';
       document.getElementById('investCard').style.display = 'none';
+      document.getElementById('savedCard').style.display = 'none';
       document.getElementById('budgetCard').hidden = true;
       const inSum = sumAmounts(shown.filter(e => typeOf(e) === 'income'));
       const outSum = sumAmounts(shown.filter(e => typeOf(e) === 'expense'));
@@ -2504,7 +2525,9 @@
                 <div class="cat">${[e.category, e.subcategory, detailOf(e)].filter(Boolean).map(mark).join(' › ')}${e.split
                   ? ` · <span class="split-tag">👥 your share of ${formatMoney(e.split.total)}</span>` : ''}${e.shared
                   ? ` · <span class="split-tag">☁️ ${sharedEntryTag(e)}</span>` : ''}${investedIn(e)
-                  ? ` · <span class="invest-tag">📈 into ${escapeHtml(investedIn(e).name)}</span>` : ''}${typeOf(e) === 'income' && findHolding(e.toHolding)
+                  ? ` · <span class="invest-tag">📈 into ${escapeHtml(investedIn(e).name)}</span>` : ''}${savedIn(e)
+                  ? ` · <span class="invest-tag">🐷 saved in ${escapeHtml(savedIn(e).name)}</span>` : ''}${fromSavings(e)
+                  ? ` · <span class="invest-tag">🐷 from savings: ${escapeHtml(fromSavings(e).name)}</span>` : ''}${typeOf(e) === 'income' && findHolding(e.toHolding)
                   ? ` · <span class="invest-tag">🏦 into ${escapeHtml(findHolding(e.toHolding).name)}</span>` : ''}${findHolding(e.costOf)
                   ? ` · <span class="invest-tag">🔧 ${escapeHtml(findHolding(e.costOf).name)} · ${escapeHtml(e.costType || 'Other')}</span>` : ''}</div>
               </div>
@@ -2768,12 +2791,14 @@
 
   // monthExpenses: entries in the chosen period of the chosen type (spending or income)
   // ---- Income vs spending: one bar for the period's income, split into where it went ----
-  let cashflow = { income: [], spend: [], invest: [] };
+  // saved: put into savings minus taken out (negative = spending was covered by savings)
+  let cashflow = { income: [], spend: [], invest: [], saved: 0 };
 
   function cashflowHtml() {
-    const { income, spend, invest } = cashflow;
+    const { income, spend, invest, saved } = cashflow;
     const inc = sumAmounts(income), out = sumAmounts(spend), inv = sumAmounts(invest);
-    if (!inc && !out && !inv) return '';
+    const sav = Math.max(0, saved), fromSav = Math.max(0, -saved);
+    if (!inc && !out && !inv && !sav) return '';
     const head = `<h2>💵 Income vs spending · ${escapeHtml(periodRange().title)}</h2>`;
     if (incomeHidden()) return `<div class="card">${head}<p class="hint" style="margin-top:0">🔒 Income is hidden. <button class="link-btn" onclick="unlockIncome()">Show</button></p></div>`;
     if (!inc) return `<div class="card">${head}<p class="hint" style="margin-top:0">No income recorded ${periodRange().empty}. Add your salary to see how much of it each category takes.</p></div>`;
@@ -2787,11 +2812,13 @@
     const segs = [...big];
     if (small.length) segs.push({ name: `Other (${small.length})`, v: round2(small.reduce((t, c) => t + c.v, 0)), color: FALLBACK_COLOR });
     if (inv) segs.push({ name: 'Invested', v: round2(inv), color: 'var(--accent)' });
-    const used = out + inv, left = round2(inc - used);
-    const scale = Math.max(inc, used);
+    if (sav) segs.push({ name: 'Saved', v: round2(sav), color: 'var(--p1)' });
+    // Money taken from savings is there to spend on top of income
+    const avail = inc + fromSav, used = out + inv + sav, left = round2(avail - used);
+    const scale = Math.max(avail, used);
     const segHtml = segs.map(x => `<span style="width:${x.v / scale * 100}%;background:${x.color}" data-flow="${escapeHtml(`${x.name}: ${formatMoney(x.v)} (${pctOf(x.v)} of income)`)}" title="${escapeHtml(`${x.name}: ${formatMoney(x.v)}`)}"></span>`).join('')
       + (left > 0 ? `<span class="left" style="width:${left / scale * 100}%" data-flow="${escapeHtml(`Left over: ${formatMoney(left)} (${pctOf(left)} of income)`)}" title="Left over"></span>` : '');
-    const marker = used > inc ? `<div class="flow-marker" style="left:calc(${inc / scale * 100}% - 1px)"><small>income</small></div>` : '';
+    const marker = used > avail ? `<div class="flow-marker" style="left:calc(${avail / scale * 100}% - 1px)"><small>${fromSav ? 'income + savings' : 'income'}</small></div>` : '';
     const row = (color, name, v, cls = '') => `<div class="row ${cls}"><i style="background:${color}"></i><span>${escapeHtml(name)}</span><b>${formatMoney(v)}</b><em>${pctOf(v)}</em></div>`;
     return `
       <div class="card">
@@ -2800,6 +2827,8 @@
           <span>Income <b>${formatMoney(inc)}</b></span>
           <span>Spent <b>${formatMoney(out)}</b> (${pctOf(out)})</span>
           ${inv ? `<span>Invested <b>${formatMoney(inv)}</b> (${pctOf(inv)})</span>` : ''}
+          ${sav ? `<span>Saved <b>${formatMoney(sav)}</b> (${pctOf(sav)})</span>` : ''}
+          ${fromSav ? `<span>From savings <b>${formatMoney(fromSav)}</b></span>` : ''}
           <span>${left >= 0 ? `Left <b>${formatMoney(left)}</b> (${pctOf(left)})` : `<b style="color:var(--danger-ink)">Over by ${formatMoney(-left)}</b>`}</span>
         </div>
         <div class="flow-wrap"${marker ? ' style="margin-top:26px"' : ''}>
@@ -2809,9 +2838,10 @@
         <details class="more flow-legend"><summary>Where your income went</summary>
           ${cats.map(c => row(c.color, c.name, c.v)).join('')}
           ${inv ? row('var(--accent)', 'Invested (SIPs, EMIs, gold…)', inv) : ''}
+          ${sav ? row('var(--p1)', 'Saved', sav) : ''}
           ${left > 0 ? row('var(--border)', 'Left over', left) : ''}
         </details>
-        <p class="hint" style="margin-top:6px">The whole bar is your income. Tap a part to see it. Counts all spending, trips included.</p>
+        <p class="hint" style="margin-top:6px">The whole bar is your income${fromSav ? ' plus what you took from savings' : ''}. Tap a part to see it. Counts all spending, trips included.</p>
       </div>`;
   }
 
@@ -3072,6 +3102,13 @@
 
   document.getElementById('chartInvested').addEventListener('change', ev => {
     ui.chartInvested = ev.target.checked;
+    chartSel = null;
+    saveUi();
+    render();
+  });
+
+  document.getElementById('chartSaved').addEventListener('change', ev => {
+    ui.chartSaved = ev.target.checked;
     chartSel = null;
     saveUi();
     render();
@@ -3599,7 +3636,7 @@
     haptic();
     if (data.toHolding) refreshNavs(); // a SIP into an auto fund gets its units
     toast(editing ? 'Changes saved' : `${entryType === 'income' ? 'Income' : 'Expense'} added`);
-    if (entryType === 'expense' && !investedIn(data)) budgetNudge(data.category, data.date); // replaces it near / over budget
+    if (isSpend(data)) budgetNudge(data.category, data.date); // replaces it near / over budget
     // Save & add another: a fresh form, same type and date
     if (!editing && ev.submitter && ev.submitter.dataset.another) {
       const type = entryType, date = data.date;
@@ -5448,6 +5485,8 @@
       { key: 'bank', label: 'Bank (optional)', placeholder: 'e.g. HDFC Bank' },
       { key: 'balance', label: 'Balance now', type: 'money', value: true },
       { key: 'salary', label: '⭐ This is my salary account', type: 'checkbox' },
+      { key: 'savings', label: '🐷 I keep my savings here', type: 'checkbox',
+        hint: 'Money you move in (an expense that “Goes into” it) counts as Saved, not spent. Spend from it later with “Paid from”.' },
     ],
     investment: [
       { key: 'name', label: 'Name', placeholder: 'e.g. Parag Parikh Flexi Cap', required: true },
@@ -5571,6 +5610,21 @@
     return h && ['investment', 'asset', 'gold', 'liability'].includes(h.kind) ? h : null;
   }
 
+  // The savings account an expense moves money into (see "🐷 I keep my savings here"), if any
+  function savedIn(e) {
+    const h = typeOf(e) === 'expense' && e.toHolding && findHolding(e.toHolding);
+    return h && h.kind === 'account' && h.savings && e.paidFrom !== h.id ? h : null;
+  }
+  // The savings account an expense was paid from: money taken back out of savings
+  function fromSavings(e) {
+    const h = typeOf(e) === 'expense' && e.paidFrom && findHolding(e.paidFrom);
+    return h && h.kind === 'account' && h.savings && e.toHolding !== h.id ? h : null;
+  }
+  // Real spending: not money invested or put into savings
+  function isSpend(e) {
+    return typeOf(e) === 'expense' && !investedIn(e) && !savedIn(e);
+  }
+
   // Linked after the holding's value was last typed in, so not part of that number yet
   const linkedAfter = (e, h) => (e.linkedAt || e.createdAt || 0) > (h.valueAt || 0);
 
@@ -5583,9 +5637,9 @@
   function holdingNow(h) {
     const num = v => Number(v) || 0;
     if (h.kind === 'account') {
-      // Balance typed in, plus income that went into it, minus spending paid from it, since then
-      const into = sumAmounts(expenses.filter(e => typeOf(e) === 'income' && e.toHolding === h.id && linkedAfter(e, h)));
-      const out = sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.paidFrom === h.id && linkedAfter(e, h)));
+      // Balance typed in, plus income (and savings) that went into it, minus spending paid from it, since then
+      const into = sumAmounts(expenses.filter(e => e.toHolding === h.id && e.paidFrom !== h.id && (typeOf(e) === 'income' || savedIn(e)) && linkedAfter(e, h)));
+      const out = sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.paidFrom === h.id && e.toHolding !== h.id && linkedAfter(e, h)));
       return { value: round2(num(h.balance) + into - out), into, out };
     }
     if (h.kind === 'investment') {
@@ -6112,8 +6166,8 @@
     const window = expenses.filter(e => used.some(k => inMonth(e, k)));
     // Plans are in whole rupees
     const income = Math.round(sumAmounts(window.filter(e => typeOf(e) === 'income')) / n);
-    const spendList = window.filter(e => typeOf(e) === 'expense' && !investedIn(e) && isDaily(e));
-    const occasional = Math.round(sumAmounts(window.filter(e => typeOf(e) === 'expense' && !investedIn(e) && !isDaily(e))) / n);
+    const spendList = window.filter(e => isSpend(e) && isDaily(e));
+    const occasional = Math.round(sumAmounts(window.filter(e => isSpend(e) && !isDaily(e))) / n);
     const spend = Math.round(sumAmounts(spendList) / n);
     // Regular bills: the same thing (category + note) every month, at a similar amount
     const groupsMap = new Map();
@@ -6217,20 +6271,24 @@
   let holdingTouched = false; // picked by hand in this form, so don't change it automatically
 
   const holdingsOf = kind => holdings.filter(h => h.kind === kind).sort((a, b) => (b.salary ? 1 : 0) - (a.salary ? 1 : 0) || a.name.localeCompare(b.name));
-  const holdingOptions = (kind, label) => {
-    const list = holdingsOf(kind);
+  const holdingOptions = (kind, label, only = () => true) => {
+    const list = holdingsOf(kind).filter(only);
     return list.length ? `<optgroup label="${label}">${list.map(h => `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}${h.salary ? ' ⭐' : ''}</option>`).join('')}</optgroup>` : '';
   };
 
-  // Spending: into an investment / asset / loan. Income: into a bank account.
+  // Spending: into an investment / asset / loan, or a savings account. Income: into a bank account.
+  function canGoInto(h) {
+    return ['investment', 'asset', 'gold', 'liability'].includes(h.kind) || (h.kind === 'account' && h.savings);
+  }
   function fillHoldingOptions(selected) {
     const sel = document.getElementById('toHolding');
     sel.innerHTML = entryType === 'income'
       ? '<option value="">— Not tracked —</option>' + holdingOptions('account', '🏦 Bank accounts')
-      : '<option value="">— Nothing: a normal expense —</option>' + holdingOptions('investment', '📈 Investments') +
-        holdingOptions('asset', '🏠 Property & vehicles') + holdingOptions('gold', '💍 Gold & jewellery') + holdingOptions('liability', '💳 Loans (EMI / prepayment)');
+      : '<option value="">— Nothing: a normal expense —</option>' + holdingOptions('account', '🐷 Savings', h => h.savings) +
+        holdingOptions('investment', '📈 Investments') + holdingOptions('asset', '🏠 Property & vehicles') +
+        holdingOptions('gold', '💍 Gold & jewellery') + holdingOptions('liability', '💳 Loans (EMI / prepayment)');
     const h = findHolding(selected);
-    sel.value = h && (entryType === 'income') === (h.kind === 'account') ? selected : '';
+    sel.value = h && (entryType === 'income' ? h.kind === 'account' : canGoInto(h)) ? selected : '';
     showHoldingField();
   }
 
@@ -6238,6 +6296,7 @@
     const sel = document.getElementById('paidFrom');
     sel.innerHTML = '<option value="">— Not tracked —</option>' + holdingOptions('account', '🏦 Bank accounts');
     sel.value = findHolding(selected) ? selected : '';
+    showPaidFromHint();
   }
 
   // New spending comes out of the account you used last (your salary account to begin with)
@@ -6258,7 +6317,7 @@
 
   function showHoldingField() {
     const income = entryType === 'income';
-    const any = income ? holdings.some(h => h.kind === 'account') : holdings.some(h => ['investment', 'asset', 'gold', 'liability'].includes(h.kind));
+    const any = income ? holdings.some(h => h.kind === 'account') : holdings.some(canGoInto);
     const sel = document.getElementById('toHolding');
     document.getElementById('holdingField').hidden = !any || (!income && split.on);
     document.getElementById('paidFromField').hidden = income || split.on || !holdings.some(h => h.kind === 'account');
@@ -6267,11 +6326,23 @@
     const h = findHolding(sel.value);
     document.getElementById('holdingHint').textContent = income
       ? (h ? `Adds to the balance of ${h.name}.` : 'Pick the account it was paid into to keep its balance up to date.')
-      : !h ? 'For SIPs, gold, a loan EMI…: counts as Invested, not spent.'
+      : !h ? `For SIPs, gold, a loan EMI…: counts as Invested, not spent.${holdings.some(x => x.kind === 'account' && x.savings) ? ' Money set aside in a savings account counts as Saved.' : ''}`
+      : h.kind === 'account' ? `Moves it into ${h.name}. Counts as Saved, not spent. To use it later, pick ${h.name} under “Paid from”.`
       : h.kind === 'liability' ? `Reduces what's left on ${h.name}${Number(h.rate) ? ' (the interest part is worked out from its rate)' : ''}. Counts as Invested, not spent.`
       : `Adds to ${h.name}. Counts as Invested, not spent.`;
+    showPaidFromHint();
   }
   document.getElementById('toHolding').addEventListener('change', () => { holdingTouched = true; showHoldingField(); });
+
+  // Paying from a savings account: the money comes out of what you saved, not this month's income
+  function showPaidFromHint() {
+    const from = findHolding(document.getElementById('paidFrom').value);
+    const to = findHolding(document.getElementById('toHolding').value);
+    const hint = document.getElementById('paidFromHint');
+    hint.hidden = !(from && from.savings) || entryType === 'income' || from === to;
+    if (!hint.hidden) hint.textContent = `🐷 Uses your savings in ${from.name} (${formatMoney(holdingNow(from).value)} there now). Still counts as spending, but doesn’t reduce this month’s balance.`;
+  }
+  document.getElementById('paidFrom').addEventListener('change', showPaidFromHint);
 
   // Running costs by kind of property; the expense form and the property page use these
   const COST_TYPES = {
@@ -6338,6 +6409,11 @@
     if (h.kind === 'account') {
       sub = [h.bank, h.valueAt ? 'updated ' + new Date(h.valueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '',
         now.into || now.out ? `+${formatMoney(now.into)} in, −${formatMoney(now.out)} out since` : ''].filter(Boolean).join(' · ');
+      if (h.savings) {
+        const ym = todayISO().slice(0, 7), mine = e => e.date.startsWith(ym);
+        const put = sumAmounts(expenses.filter(e => mine(e) && savedIn(e) === h)), took = sumAmounts(expenses.filter(e => mine(e) && fromSavings(e) === h));
+        if (put || took) sub += `${sub ? '<br>' : ''}This month: ${[put ? `saved ${formatMoney(put)}` : '', took ? `used ${formatMoney(took)}` : ''].filter(Boolean).join(', ')}`;
+      }
       amt = formatMoney(now.value);
     } else if (h.kind === 'investment') {
       const navInfo = now.nav ? `📡 ${now.units.toLocaleString('en-IN', { maximumFractionDigits: 3 })} units × NAV ₹${now.nav.toLocaleString('en-IN', { maximumFractionDigits: 4 })} (${fmtDate(now.navDate)})${navIsOld(now.navDate) ? ' <span class="due-soon">⚠ NAV is old: is this the right fund?</span>' : ''}`
@@ -6382,7 +6458,7 @@
     if (forGoals > 0.0001) sub += `${sub ? ' · ' : ''}${Math.min(100, Math.round(forGoals * 100))}% set aside for goals`;
     return `
       <div class="h-row" data-holding="${escapeHtml(h.id)}">
-        <div class="info"><div class="name">${escapeHtml(h.name)}${h.salary ? '<span class="salary-badge">⭐ Salary</span>' : ''}</div>
+        <div class="info"><div class="name">${escapeHtml(h.name)}${h.salary ? '<span class="salary-badge">⭐ Salary</span>' : ''}${h.kind === 'account' && h.savings ? '<span class="salary-badge">🐷 Savings</span>' : ''}</div>
           <div class="sub wrap">${sub}</div></div>
         <div class="amt">${amt}</div>
       </div>`;
@@ -6882,7 +6958,7 @@
   }
 
   function spentInMonth(category, ym) {
-    return round2(sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.category === category && e.date.startsWith(ym) && !investedIn(e))));
+    return round2(sumAmounts(expenses.filter(e => typeOf(e) === 'expense' && e.category === category && e.date.startsWith(ym) && isSpend(e))));
   }
 
   function budgetRows(ym) {
@@ -6985,7 +7061,7 @@ You are not a licensed adviser: for big or irreversible decisions suggest checki
     const months = [0, 1, 2, 3].map(i => new Date(now.getFullYear(), now.getMonth() - i, 1)).map(d => {
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const list = expenses.filter(e => e.date.startsWith(ym));
-      const spend = list.filter(e => typeOf(e) === 'expense' && !investedIn(e));
+      const spend = list.filter(isSpend);
       const byCategory = {};
       spend.forEach(e => { byCategory[e.category] = (byCategory[e.category] || 0) + e.amount; });
       return {
@@ -6994,6 +7070,8 @@ You are not a licensed adviser: for big or irreversible decisions suggest checki
         spending: r(sumAmounts(spend)),
         occasionalSpending: r(sumAmounts(spend.filter(e => !isDaily(e)))),
         investedOrLoanPayments: r(sumAmounts(list.filter(e => typeOf(e) === 'expense' && investedIn(e)))),
+        putIntoSavings: r(sumAmounts(list.filter(savedIn))),
+        takenFromSavings: r(sumAmounts(list.filter(fromSavings))),
         spendingByCategory: Object.fromEntries(Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => [k, r(v)])),
       };
     });
