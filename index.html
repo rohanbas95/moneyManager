@@ -146,6 +146,7 @@
   }
   .stat-label { display: block; font-size: 11px; opacity: 0.85; }
   .stat-value { display: block; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat-sub { display: block; font-size: 11px; opacity: 0.85; font-variant-numeric: tabular-nums; }
   main { padding: 16px; padding-bottom: 96px; max-width: 600px; margin: 0 auto; }
   .card {
     background: var(--card);
@@ -273,6 +274,8 @@
   .flow-bar span { display: block; height: 100%; min-width: 2px; cursor: pointer; }
   .flow-bar .left { background: repeating-linear-gradient(135deg, var(--border) 0 6px, transparent 6px 10px); }
   .flow-bar .over { background: var(--danger); }
+  .flow-bar .rest { background: color-mix(in srgb, var(--p1) 18%, transparent); }
+  .flow-savings { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
   .flow-marker { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--text); }
   .flow-marker small { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; }
   .flow-legend { margin-top: 10px; }
@@ -1064,7 +1067,7 @@
     <div class="stat"><span class="stat-label">Income</span><span class="stat-value" id="monthIncome"></span></div>
     <div class="stat"><span class="stat-label">Expenses</span><span class="stat-value" id="monthExpense"></span></div>
     <div class="stat" id="investedStat" hidden><span class="stat-label">Invested</span><span class="stat-value" id="monthInvested"></span></div>
-    <div class="stat" id="savedStat" hidden><span class="stat-label">Saved</span><span class="stat-value" id="monthSaved"></span></div>
+    <div class="stat" id="savedStat" hidden><span class="stat-label">Saved</span><span class="stat-value" id="monthSaved"></span><span class="stat-sub" id="monthFromSavings" hidden></span></div>
   </div>
   <nav class="tabs">
     <button class="tab" data-tab="expenses">Transactions</button>
@@ -1100,6 +1103,11 @@
       <h2>🐷 Put into savings</h2>
       <div id="savedBreakdown"></div>
     </div>
+    <div class="card" id="fromSavingsCard">
+      <h2>🐷 Spent from savings</h2>
+      <p class="hint" style="margin:-4px 0 8px">Paid with money saved earlier, so it isn’t counted in this month’s expenses or balance.</p>
+      <div id="fromSavingsBreakdown"></div>
+    </div>
     <div id="expenseList"></div>
   </section>
 
@@ -1117,6 +1125,9 @@
     </label>
     <label class="split-toggle" id="chartSavedRow" style="margin:-4px 2px 6px" hidden>
       <input type="checkbox" id="chartSaved"> Include saved (money put into savings)
+    </label>
+    <label class="split-toggle" id="chartFromSavingsRow" style="margin:-4px 2px 6px" hidden>
+      <input type="checkbox" id="chartFromSavings"> Include spent from savings
     </label>
     <label class="split-toggle" id="chartOccasionalRow" style="margin:6px 2px 14px" hidden>
       <input type="checkbox" id="chartOccasional"> Include occasional (trips…)
@@ -2397,13 +2408,15 @@
     const monthIncome = monthExpenses.filter(e => typeOf(e) === 'income');
     // Money put into investments, assets or loans is "Invested", into a savings account "Saved": not spent
     const monthSpend = monthExpenses.filter(isSpend);
-    const monthInvest = monthExpenses.filter(e => typeOf(e) === 'expense' && investedIn(e));
+    // Paid from savings: shown on its own, outside this month's expenses and balance
+    const monthInvest = monthExpenses.filter(e => typeOf(e) === 'expense' && investedIn(e) && !fromSavings(e));
     const monthSave = monthExpenses.filter(savedIn);
+    const monthFromSav = monthExpenses.filter(fromSavings);
     const incomeTotal = sumAmounts(monthIncome);
     const spendTotal = sumAmounts(monthSpend);
     const investTotal = sumAmounts(monthInvest);
-    // Saved = put in minus taken out: spending paid from savings was covered by money saved before
-    const savedTotal = round2(sumAmounts(monthSave) - sumAmounts(monthExpenses.filter(fromSavings)));
+    const savedTotal = sumAmounts(monthSave);
+    const fromSavTotal = sumAmounts(monthFromSav);
     const hidden = incomeHidden();
     const balanceEl = document.getElementById('monthBalance');
     const left = incomeTotal - spendTotal - investTotal - savedTotal;
@@ -2412,8 +2425,11 @@
     document.getElementById('investedStat').hidden = !investTotal && !holdings.some(h => h.kind !== 'goal');
     document.getElementById('monthInvested').textContent = formatMoney(investTotal);
     const anySavings = holdings.some(h => h.kind === 'account' && h.savings);
-    document.getElementById('savedStat').hidden = !savedTotal && !anySavings;
-    document.getElementById('monthSaved').textContent = savedTotal < 0 ? '−' + formatMoney(-savedTotal) : formatMoney(savedTotal);
+    document.getElementById('savedStat').hidden = !savedTotal && !fromSavTotal && !anySavings;
+    document.getElementById('monthSaved').textContent = formatMoney(savedTotal);
+    const fromSavEl = document.getElementById('monthFromSavings');
+    fromSavEl.hidden = !fromSavTotal;
+    fromSavEl.textContent = `−${formatMoney(fromSavTotal)} used`;
     const incomeEl = document.getElementById('monthIncome');
     incomeEl.textContent = incomeMoney(incomeTotal);
     balanceEl.classList.toggle('masked', hidden);
@@ -2444,14 +2460,16 @@
       // ...and money put into savings
       document.getElementById('chartSavedRow').hidden = ui.chartType === 'income' || (!anySavings && !monthSave.length);
       document.getElementById('chartSaved').checked = !!ui.chartSaved;
+      document.getElementById('chartFromSavingsRow').hidden = ui.chartType === 'income' || !monthFromSav.length;
+      document.getElementById('chartFromSavings').checked = !!ui.chartFromSavings;
       // Occasional spending (trips…) only when asked; the switch shows once something is marked occasional
       const anyOccasional = categories.some(c => c.daily === false || (c.occasionalSubs || []).length);
       document.getElementById('chartOccasionalRow').hidden = ui.chartType === 'income' || !anyOccasional;
       document.getElementById('chartOccasional').checked = !!ui.chartOccasional;
       const spending = ui.chartOccasional || !anyOccasional ? monthSpend : monthSpend.filter(isDaily);
-      cashflow = { income: monthIncome, spend: monthSpend, invest: monthInvest, saved: savedTotal };
+      cashflow = { income: monthIncome, spend: monthSpend, invest: monthInvest, saved: monthSave, fromSavings: monthFromSav };
       renderCharts(ui.chartType === 'income' ? monthIncome
-        : spending.concat(ui.chartInvested ? monthInvest : [], ui.chartSaved ? monthSave : []));
+        : spending.concat(ui.chartInvested ? monthInvest : [], ui.chartSaved ? monthSave : [], ui.chartFromSavings ? monthFromSav : []));
       return;
     }
 
@@ -2459,6 +2477,7 @@
     renderBreakdown('expenseCard', 'expenseBreakdown', monthSpend, formatMoney);
     renderBreakdown('investCard', 'investBreakdown', monthInvest, formatMoney);
     renderBreakdown('savedCard', 'savedBreakdown', monthSave, formatMoney);
+    renderBreakdown('fromSavingsCard', 'fromSavingsBreakdown', monthFromSav, formatMoney);
     renderBudgetCard();
 
     // While searching, results replace the category summaries at the top
@@ -2472,6 +2491,7 @@
       document.getElementById('expenseCard').style.display = 'none';
       document.getElementById('investCard').style.display = 'none';
       document.getElementById('savedCard').style.display = 'none';
+      document.getElementById('fromSavingsCard').style.display = 'none';
       document.getElementById('budgetCard').hidden = true;
       const inSum = sumAmounts(shown.filter(e => typeOf(e) === 'income'));
       const outSum = sumAmounts(shown.filter(e => typeOf(e) === 'expense'));
@@ -2791,17 +2811,15 @@
 
   // monthExpenses: entries in the chosen period of the chosen type (spending or income)
   // ---- Income vs spending: one bar for the period's income, split into where it went ----
-  // saved: put into savings minus taken out (negative = spending was covered by savings)
-  let cashflow = { income: [], spend: [], invest: [], saved: 0 };
+  let cashflow = { income: [], spend: [], invest: [], saved: [], fromSavings: [] };
 
   function cashflowHtml() {
-    const { income, spend, invest, saved } = cashflow;
-    const inc = sumAmounts(income), out = sumAmounts(spend), inv = sumAmounts(invest);
-    const sav = Math.max(0, saved), fromSav = Math.max(0, -saved);
-    if (!inc && !out && !inv && !sav) return '';
+    const { income, spend, invest, saved, fromSavings: usedList } = cashflow;
+    const inc = sumAmounts(income), out = sumAmounts(spend), inv = sumAmounts(invest), sav = sumAmounts(saved);
+    if (!inc && !out && !inv && !sav && !usedList.length) return '';
     const head = `<h2>💵 Income vs spending · ${escapeHtml(periodRange().title)}</h2>`;
     if (incomeHidden()) return `<div class="card">${head}<p class="hint" style="margin-top:0">🔒 Income is hidden. <button class="link-btn" onclick="unlockIncome()">Show</button></p></div>`;
-    if (!inc) return `<div class="card">${head}<p class="hint" style="margin-top:0">No income recorded ${periodRange().empty}. Add your salary to see how much of it each category takes.</p></div>`;
+    if (!inc) return `<div class="card">${head}<p class="hint" style="margin-top:0">No income recorded ${periodRange().empty}. Add your salary to see how much of it each category takes.</p>${savingsUsedHtml(usedList)}</div>`;
     const pctOf = v => `${(v / inc * 100).toFixed(v / inc < 0.1 ? 1 : 0)}%`;
     // Every category (biggest first), then invested, then what's left
     const byCat = new Map();
@@ -2813,12 +2831,11 @@
     if (small.length) segs.push({ name: `Other (${small.length})`, v: round2(small.reduce((t, c) => t + c.v, 0)), color: FALLBACK_COLOR });
     if (inv) segs.push({ name: 'Invested', v: round2(inv), color: 'var(--accent)' });
     if (sav) segs.push({ name: 'Saved', v: round2(sav), color: 'var(--p1)' });
-    // Money taken from savings is there to spend on top of income
-    const avail = inc + fromSav, used = out + inv + sav, left = round2(avail - used);
-    const scale = Math.max(avail, used);
+    const used = out + inv + sav, left = round2(inc - used);
+    const scale = Math.max(inc, used);
     const segHtml = segs.map(x => `<span style="width:${x.v / scale * 100}%;background:${x.color}" data-flow="${escapeHtml(`${x.name}: ${formatMoney(x.v)} (${pctOf(x.v)} of income)`)}" title="${escapeHtml(`${x.name}: ${formatMoney(x.v)}`)}"></span>`).join('')
       + (left > 0 ? `<span class="left" style="width:${left / scale * 100}%" data-flow="${escapeHtml(`Left over: ${formatMoney(left)} (${pctOf(left)} of income)`)}" title="Left over"></span>` : '');
-    const marker = used > avail ? `<div class="flow-marker" style="left:calc(${avail / scale * 100}% - 1px)"><small>${fromSav ? 'income + savings' : 'income'}</small></div>` : '';
+    const marker = used > inc ? `<div class="flow-marker" style="left:calc(${inc / scale * 100}% - 1px)"><small>income</small></div>` : '';
     const row = (color, name, v, cls = '') => `<div class="row ${cls}"><i style="background:${color}"></i><span>${escapeHtml(name)}</span><b>${formatMoney(v)}</b><em>${pctOf(v)}</em></div>`;
     return `
       <div class="card">
@@ -2828,7 +2845,6 @@
           <span>Spent <b>${formatMoney(out)}</b> (${pctOf(out)})</span>
           ${inv ? `<span>Invested <b>${formatMoney(inv)}</b> (${pctOf(inv)})</span>` : ''}
           ${sav ? `<span>Saved <b>${formatMoney(sav)}</b> (${pctOf(sav)})</span>` : ''}
-          ${fromSav ? `<span>From savings <b>${formatMoney(fromSav)}</b></span>` : ''}
           <span>${left >= 0 ? `Left <b>${formatMoney(left)}</b> (${pctOf(left)})` : `<b style="color:var(--danger-ink)">Over by ${formatMoney(-left)}</b>`}</span>
         </div>
         <div class="flow-wrap"${marker ? ' style="margin-top:26px"' : ''}>
@@ -2841,7 +2857,39 @@
           ${sav ? row('var(--p1)', 'Saved', sav) : ''}
           ${left > 0 ? row('var(--border)', 'Left over', left) : ''}
         </details>
-        <p class="hint" style="margin-top:6px">The whole bar is your income${fromSav ? ' plus what you took from savings' : ''}. Tap a part to see it. Counts all spending, trips included.</p>
+        <p class="hint" style="margin-top:6px">The whole bar is your income. Tap a part to see it. Counts all spending, trips included${usedList.length ? ', but not what you paid from savings (below)' : ''}.</p>
+        ${savingsUsedHtml(usedList)}
+      </div>`;
+  }
+
+  // Spent from savings: its own bar, against what was in savings, so it never looks like overspending income
+  function savingsUsedHtml(list) {
+    const used = round2(sumAmounts(list));
+    if (!used) return '';
+    const left = round2(Math.max(0, holdings.filter(h => h.kind === 'account' && h.savings).reduce((t, h) => t + holdingNow(h).value, 0)));
+    const total = used + left;
+    const byCat = new Map();
+    list.forEach(e => byCat.set(e.category, (byCat.get(e.category) || 0) + e.amount));
+    const cats = [...byCat].sort((a, b) => b[1] - a[1]).map(([name, v]) => ({ name, v: round2(v), color: colorFor(name) }));
+    const pctOf = v => `${(v / total * 100).toFixed(v / total < 0.1 ? 1 : 0)}%`;
+    const row = (color, name, v, cls = '') => `<div class="row ${cls}"><i style="background:${color}"></i><span>${escapeHtml(name)}</span><b>${formatMoney(v)}</b><em>${pctOf(v)}</em></div>`;
+    return `
+      <div class="flow-savings">
+        <h2 style="margin-bottom:6px">🐷 Spent from savings</h2>
+        <div class="flow-sum">
+          <span>Used <b>${formatMoney(used)}</b></span>
+          <span>Left in savings now <b>${formatMoney(left)}</b></span>
+        </div>
+        <div class="flow-wrap">
+          <div class="flow-bar" role="img" aria-label="Savings: ${cats.map(c => `${c.name} ${formatMoney(c.v)}`).join(', ')}, ${formatMoney(left)} left">${cats.map(c =>
+            `<span style="width:${c.v / total * 100}%;background:${c.color}" data-flow="${escapeHtml(`${c.name}: ${formatMoney(c.v)} from savings`)}" title="${escapeHtml(`${c.name}: ${formatMoney(c.v)}`)}"></span>`).join('')}${left > 0
+            ? `<span class="rest" style="width:${left / total * 100}%" data-flow="${escapeHtml(`Still in savings: ${formatMoney(left)}`)}" title="Still in savings"></span>` : ''}</div>
+        </div>
+        <details class="more flow-legend"><summary>What you used it for</summary>
+          ${cats.map(c => row(c.color, c.name, c.v)).join('')}
+          ${left > 0 ? row('color-mix(in srgb, var(--p1) 18%, transparent)', 'Still in savings', left) : ''}
+        </details>
+        <p class="hint" style="margin-top:6px">The bar is your savings: what you used ${periodRange().empty} plus what’s still there. Paid with money saved earlier, so it’s not in this month’s spending.</p>
       </div>`;
   }
 
@@ -3109,6 +3157,13 @@
 
   document.getElementById('chartSaved').addEventListener('change', ev => {
     ui.chartSaved = ev.target.checked;
+    chartSel = null;
+    saveUi();
+    render();
+  });
+
+  document.getElementById('chartFromSavings').addEventListener('change', ev => {
+    ui.chartFromSavings = ev.target.checked;
     chartSel = null;
     saveUi();
     render();
@@ -5619,16 +5674,20 @@
   // The savings account an expense moves money into (see "🐷 I keep my savings here"), if any
   function savedIn(e) {
     const h = typeOf(e) === 'expense' && e.toHolding && findHolding(e.toHolding);
-    return h && h.kind === 'account' && h.savings && e.paidFrom !== h.id ? h : null;
+    const from = e.paidFrom && findHolding(e.paidFrom);
+    return h && h.kind === 'account' && h.savings && !(from && from.kind === 'account' && from.savings) ? h : null;
   }
-  // The savings account an expense was paid from: money taken back out of savings
+  // The savings account an expense was paid from: money saved earlier, so not this month's spending
+  // (moving money between two savings accounts is neither saved nor spent)
   function fromSavings(e) {
     const h = typeOf(e) === 'expense' && e.paidFrom && findHolding(e.paidFrom);
-    return h && h.kind === 'account' && h.savings && e.toHolding !== h.id ? h : null;
+    const to = e.toHolding && findHolding(e.toHolding);
+    return h && h.kind === 'account' && h.savings && !(to && to.kind === 'account' && to.savings) ? h : null;
   }
-  // Real spending: not money invested or put into savings
+  // This month's spending: not invested, put into savings, paid from savings, or moved between your accounts
   function isSpend(e) {
-    return typeOf(e) === 'expense' && !investedIn(e) && !savedIn(e);
+    const to = e.toHolding && findHolding(e.toHolding);
+    return typeOf(e) === 'expense' && !investedIn(e) && !(to && to.kind === 'account') && !fromSavings(e);
   }
 
   // Linked after the holding's value was last typed in, so not part of that number yet
@@ -6346,7 +6405,7 @@
     const to = findHolding(document.getElementById('toHolding').value);
     const hint = document.getElementById('paidFromHint');
     hint.hidden = !(from && from.savings) || entryType === 'income' || from === to;
-    if (!hint.hidden) hint.textContent = `🐷 Uses your savings in ${from.name} (${formatMoney(holdingNow(from).value)} there now). Still counts as spending, but doesn’t reduce this month’s balance.`;
+    if (!hint.hidden) hint.textContent = `🐷 Uses your savings in ${from.name} (${formatMoney(holdingNow(from).value)} there now). Shown as “Spent from savings”, not in this month’s expenses or balance.`;
   }
   document.getElementById('paidFrom').addEventListener('change', showPaidFromHint);
 
@@ -7077,7 +7136,7 @@ You are not a licensed adviser: for big or irreversible decisions suggest checki
         occasionalSpending: r(sumAmounts(spend.filter(e => !isDaily(e)))),
         investedOrLoanPayments: r(sumAmounts(list.filter(e => typeOf(e) === 'expense' && investedIn(e)))),
         putIntoSavings: r(sumAmounts(list.filter(savedIn))),
-        takenFromSavings: r(sumAmounts(list.filter(fromSavings))),
+        spentFromSavings: r(sumAmounts(list.filter(fromSavings))),
         spendingByCategory: Object.fromEntries(Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => [k, r(v)])),
       };
     });
