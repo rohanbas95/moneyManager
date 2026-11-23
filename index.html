@@ -897,6 +897,9 @@
     cursor: pointer;
   }
   .lg-row.sel { background: var(--bg); }
+  .lg-row .lg-check { flex-shrink: 0; margin: 0; width: 18px; height: 18px; }
+  .lg-row.off { opacity: .55; }
+  .lg-row.off .nm { text-decoration: line-through; }
   .lg-row .key { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
   .lg-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lg-row .pc { width: 44px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -2893,8 +2896,21 @@
       </div>`;
   }
 
-  function renderCharts(monthExpenses) {
+  function renderCharts(allExpenses) {
+    // Categories unticked in the list below are left out of the chart and the total
+    const off = new Set(ui.chartOff || []);
+    const monthExpenses = allExpenses.filter(e => !off.has(e.category));
     const total = sumAmounts(monthExpenses);
+    const hiddenCats = [...new Set(allExpenses.map(e => e.category))].filter(c => off.has(c))
+      .map(name => ({ name, total: sumAmounts(allExpenses.filter(e => e.category === name)) }))
+      .sort((a, b) => b.total - a.total);
+    const hiddenRows = hiddenCats.map(c => `
+          <div class="lg-row off">
+            <input type="checkbox" class="lg-check" data-cat="${escapeHtml(c.name)}" aria-label="Include ${escapeHtml(c.name)}">
+            <span class="nm">${iconFor(c.name)} ${escapeHtml(c.name)}</span>
+            <span class="pc"></span>
+            <span class="am">${formatMoney(c.total)}</span>
+          </div>`).join('');
     document.querySelectorAll('#chartModeToggle button')
       .forEach(b => b.classList.toggle('active', b.dataset.mode === ui.chartMode));
     document.querySelectorAll('#chartTypeToggle button')
@@ -2905,6 +2921,13 @@
       return;
     }
     const flow = ui.chartType === 'expense' ? cashflowHtml() : '';
+    if (!monthExpenses.length && allExpenses.length) {
+      chartSel = null;
+      el.innerHTML = flow + `<div class="card"><h2>Categories</h2>
+        <p class="hint">Every category is unticked. Tick one to see it on the chart.</p>
+        <div id="chartLegend">${hiddenRows}</div></div>`;
+      return;
+    }
     if (!monthExpenses.length) {
       el.innerHTML = flow + `<div class="empty"><span class="empty-icon">📊</span><span class="empty-title">No ${ui.chartType === 'income' ? 'income' : 'spending'} ${periodRange().empty}</span>
         Charts appear as soon as you add some.<br><button class="btn primary" onclick="openAdd()">+ Add expense</button></div>`;
@@ -3021,11 +3044,12 @@
         <h2>${withSubs ? 'Categories & subcategories' : 'Categories'}</h2>
         <div id="chartLegend">${chartRows.map((r, i) => `
           <div class="lg-row ${r.cls}" data-i="${i}">
+            ${r.cls === '' ? `<input type="checkbox" class="lg-check" data-cat="${escapeHtml(r.sel.cat)}" checked aria-label="Include ${escapeHtml(r.sel.cat)}">` : ''}
             <span class="key" style="background:${r.color}"></span>
             <span class="nm">${(r.cls === 'sub' && !r.sel.sub) || (r.cls === 'detail' && !r.sel.detail) ? '<i>Unspecified</i>' : escapeHtml(r.name)}</span>
             <span class="pc">${r.pc}</span>
             <span class="am">${formatMoney(r.amount)}</span>
-          </div>`).join('')}
+          </div>`).join('')}${hiddenRows}
         </div>
       </div>`;
     paintChartSelection();
@@ -3120,6 +3144,16 @@
   });
 
   document.getElementById('chartContent').addEventListener('click', ev => {
+    const chk = ev.target.closest('.lg-check');
+    if (chk) {
+      const off = new Set(ui.chartOff || []);
+      if (chk.checked) off.delete(chk.dataset.cat); else off.add(chk.dataset.cat);
+      ui.chartOff = [...off];
+      chartSel = null;
+      saveUi();
+      return render();
+    }
+    if (ev.target.closest('.lg-row.off')) return;
     const seg = ev.target.closest('.seg, .seg-callout');
     if (seg) {
       const { other, cat, sub, detail } = chartSegs[seg.dataset.i];
