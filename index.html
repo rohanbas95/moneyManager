@@ -3060,7 +3060,7 @@
     if (!svg) return;
     svg.classList.toggle('has-sel', !!chartSel);
     svg.querySelectorAll('.seg, .seg-label').forEach(p => p.classList.toggle('sel', isHighlighted(chartSegs[p.dataset.i])));
-    document.querySelectorAll('#chartLegend .lg-row')
+    document.querySelectorAll('#chartLegend .lg-row[data-i]')
       .forEach(r => r.classList.toggle('sel', sameSel(chartRows[r.dataset.i].sel, chartSel)));
 
     // Centre readout: value leads, label follows
