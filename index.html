@@ -305,6 +305,14 @@
     background: var(--card); box-shadow: 0 3px 10px rgba(0,0,0,0.2);
     font-size: 20px; cursor: pointer;
   }
+  .note-fab { bottom: 146px; }
+  .notes-sheet { max-height: 88vh; overflow-y: auto; }
+  .note-item { padding: 10px 12px; margin-top: 8px; border-radius: 12px; background: var(--bg); }
+  .note-item .note-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
+  .note-item .note-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .note-item .note-meta span { flex: 1; }
+  .note-item .note-meta button { border: none; background: none; color: var(--muted); font-size: 13px; cursor: pointer; padding: 4px; }
+  #noteText { width: 100%; min-height: 80px; resize: vertical; box-sizing: border-box; font: inherit; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
   .ai-sheet { display: flex; flex-direction: column; height: 88vh; max-height: 88vh; padding-bottom: 12px; }
   .ai-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   .ai-head h3 { flex: 1; margin: 0; }
@@ -976,7 +984,7 @@
     line-height: 1.45;
     resize: vertical;
   }
-  body.shared-mode > header, body.shared-mode > main, body.shared-mode > .fab, body.shared-mode > .ai-fab { display: none !important; }
+  body.shared-mode > header, body.shared-mode > main, body.shared-mode > .fab, body.shared-mode > .ai-fab, body.shared-mode > .note-fab { display: none !important; }
   #sharedView { max-width: 600px; margin: 0 auto; padding: 16px; }
   .shared-banner { padding: 20px 16px; margin: -16px -16px 16px; background: var(--accent); color: #fff; }
   .shared-banner h1 { margin: 0; font-size: 20px; }
@@ -1148,6 +1156,7 @@
 </main>
 
 <button class="fab" onclick="openAdd()">+</button>
+<button class="ai-fab note-fab" id="noteFab" onclick="openNotes()" aria-label="Notes" title="Notes">📝</button>
 <button class="ai-fab" id="aiFab" onclick="openAssistant()" aria-label="Ask the AI money assistant" title="Ask the AI assistant">✨</button>
 
 <!-- Add / edit expense -->
@@ -1396,6 +1405,23 @@
         <button type="submit" class="btn primary">Save</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Notes -->
+<div class="modal-bg" id="notesModal" onclick="if (event.target === this) closeModal('notesModal')">
+  <div class="modal notes-sheet">
+    <div class="ai-head">
+      <h3>📝 Notes</h3>
+      <button type="button" class="txn-close" onclick="closeModal('notesModal')" aria-label="Close">✕</button>
+    </div>
+    <textarea id="noteText" placeholder="Write a note…" aria-label="Note"></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button type="button" class="btn primary small" id="noteSave">Add note</button>
+      <button type="button" class="btn small" id="noteCancel" hidden>Cancel</button>
+    </div>
+    <div id="notesList"></div>
+    <p class="hint" style="margin-top:10px">Notes are saved on this device only.</p>
   </div>
 </div>
 
@@ -9294,6 +9320,65 @@ If the photo is not a bill or receipt, set "readable" to false.`;
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+</script>
+
+<script>
+// Notes: free-text, kept in this browser's localStorage (not synced)
+(function () {
+  const KEY = 'moneyManager.notes.v1';
+  let notes = [];
+  try { notes = JSON.parse(localStorage.getItem(KEY)) || []; } catch {}
+  let editingId = null;
+  const $ = id => document.getElementById(id);
+  const save = () => localStorage.setItem(KEY, JSON.stringify(notes));
+  const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  function paint() {
+    $('noteSave').textContent = editingId ? 'Save changes' : 'Add note';
+    $('noteCancel').hidden = !editingId;
+    const list = notes.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+    $('notesList').innerHTML = list.length ? list.map(n => `
+      <div class="note-item">
+        <div class="note-text">${esc(n.text)}</div>
+        <div class="note-meta"><span>${new Date(n.updatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
+          <button type="button" data-edit="${n.id}">✏️ Edit</button>
+          <button type="button" data-del="${n.id}">🗑 Delete</button></div>
+      </div>`).join('') : '<p class="hint" style="margin-top:12px">No notes yet.</p>';
+  }
+  function reset() { editingId = null; $('noteText').value = ''; paint(); }
+
+  window.openNotes = function () {
+    reset();
+    openModal('notesModal');
+    setTimeout(() => $('noteText').focus(), 60);
+  };
+  $('noteSave').addEventListener('click', () => {
+    const text = $('noteText').value.trim();
+    if (!text) return;
+    const n = editingId && notes.find(x => x.id === editingId);
+    if (n) { n.text = text; n.updatedAt = Date.now(); }
+    else notes.push({ id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text, createdAt: Date.now(), updatedAt: Date.now() });
+    save();
+    reset();
+  });
+  $('noteCancel').addEventListener('click', reset);
+  $('notesList').addEventListener('click', ev => {
+    const ed = ev.target.closest('[data-edit]'), del = ev.target.closest('[data-del]');
+    if (ed) {
+      const n = notes.find(x => x.id === ed.dataset.edit);
+      if (!n) return;
+      editingId = n.id; paint();
+      $('noteText').value = n.text; $('noteText').focus();
+    } else if (del) {
+      const i = notes.findIndex(x => x.id === del.dataset.del);
+      if (i < 0) return;
+      const [gone] = notes.splice(i, 1);
+      if (editingId === gone.id) editingId = null, $('noteText').value = '';
+      save(); paint();
+      toast('Note deleted', { action: { label: 'Undo', run: () => { notes.push(gone); save(); paint(); } } });
+    }
+  });
+})();
 </script>
 </body>
 </html>
